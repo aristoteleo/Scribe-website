@@ -1,0 +1,139 @@
+Searching 3140 files for "report-Fig"
+
+/Users/xqiu/Dropbox (Personal)/Projects/Scribe/docs.html:
+  601  <p>
+  602   <table class="image">
+  603:  <tr><td><img src= "{{site.baseurl}}/images/report-Fig2.jpg" width= 600></td></tr>
+  604   <tr><td class="caption">Figure 2: Visualize gene regulations with Scribe.</td></tr>
+  605   </table>
+  ...
+  616  <p>
+  617   <table class="image">
+  618:  <tr><td><img src= "{{site.baseurl}}/images/report-Fig3.jpg" width= 600></td></tr>
+  619   <tr><td class="caption">Figure 3: Scribe accurately reveals gene regulatory hierarchy for a variety of single-cell RNA-seq datasets.</td></tr>
+  620   </table>
+  ...
+  630   <p>
+  631   <table class="image">
+  632:  <tr><td><img src= "{{site.baseurl}}/images/report-Fig4.png" width= 600></td></tr>
+  633   <tr><td class="caption">Figure 4: Scribe precisely reconstructs a core regulatory network responsible for myelopoiesis.</td></tr>
+  634   </table>
+  ...
+  645  <p>
+  646   <table class="image">
+  647:  <tr><td><img src= "{{site.baseurl}}/images/report-Fig5.jpg" width= 600></td></tr>
+  648   <tr><td class="caption">Figure 5: Scribe avoids limitations from pseudotime-based causality inference with RNA-velocity.</td></tr>
+  649   </table>
+  ...
+  666   <p>
+  667     <table class="image">
+  668:    <tr><td><img src= "{{site.baseurl}}/images/report-Fig6.jpg" width= 600></td></tr>
+  669     <tr><td class="caption">Figure 6: Reconstructing lineage specific network of C. elegans’s early embryogenesis with Scribe.</td></tr>
+  670     </table>
+  ...
+  684  
+  685  <table class="image">
+  686: <tr><td><img src= "{{site.baseurl}}/images/vignette/report-Fig1.jpg" width= 600></td></tr>
+  687  <tr><td class="caption">Figure 1: Figure 1: Scribe, a toolkit for visualizing and inferring causal regulatory network. </td></tr>
+  688  </table>
+
+/Users/xqiu/Dropbox (Personal)/Projects/Scribe/_layouts/home.html:
+   24        <div class="col-md-4">
+   25          <div class="text-center">
+   26:           <img src="images/report-Fig1.jpg" height=300 width=400></img>
+   27            <h2>Theory</h2>
+   28            <p>See how Scribe employs Restricted Direct Information (RDI) to provide a secure solution for resolving complex causal regulatory netowrks.</p>
+   ..
+   33        <div class="col-md-4">
+   34          <div class="text-center">
+   35:           <img src="images/report-Fig8.png" height=300 width=300></img>
+   36            <h2>Visualization</h2>
+   37            <p># Explain Visualization Here</p>
+   ..
+   41        <div class="col-md-4">
+   42          <div class="text-center">
+   43:           <img src="images/report-Fig4.jpg" height=300 width=415></img>
+   44            <h2>Causality Inference</h2>
+   45            <p>#Explain Causality Inference Here</p>
+   ..
+   62        </div>
+   63        <div class="col-md-5 col-md-pull-7">
+   64:         <img class="featurette-image img-responsive center-block" src="{{site.baseurl}}/images/report-Fig5.jpg" width=300 height=300 alt="Generic placeholder image">
+   65        </div>
+   66      </div>
+   ..
+   77        </div>
+   78        <div class="col-md-5">
+   79:         <img class="featurette-image img-responsive center-block" src="{{site.baseurl}}/images/report-Fig6.jpg" width=300 height=300 alt="Generic placeholder image">
+   80        </div>
+   81      </div>
+
+/Users/xqiu/Dropbox (Personal)/Projects/Scribe/_site/index.html:
+  230        <div class="col-md-4">
+  231          <div class="text-center">
+  232:           <img src="images/report-Fig1.jpg" height=300 width=400></img>
+  233            <h2>Theory</h2>
+  234            <p>See how Scribe employs Restricted Direct Information (RDI) to provide a secure solution for resolving complex causal regulatory netowrks.</p>
+  ...
+  239        <div class="col-md-4">
+  240          <div class="text-center">
+  241:           <img src="images/report-Fig8.png" height=300 width=300></img>
+  242            <h2>Visualization</h2>
+  243            <p># Explain Visualization Here</p>
+  ...
+  247        <div class="col-md-4">
+  248          <div class="text-center">
+  249:           <img src="images/report-Fig4.jpg" height=300 width=415></img>
+  250            <h2>Causality Inference</h2>
+  251            <p>#Explain Causality Inference Here</p>
+  ...
+  268        </div>
+  269        <div class="col-md-5 col-md-pull-7">
+  270:         <img class="featurette-image img-responsive center-block" src="/scribe/images/report-Fig5.jpg" width=300 height=300 alt="Generic placeholder image">
+  271        </div>
+  272      </div>
+  ...
+  283        </div>
+  284        <div class="col-md-5">
+  285:         <img class="featurette-image img-responsive center-block" src="/scribe/images/report-Fig6.jpg" width=300 height=300 alt="Generic placeholder image">
+  286        </div>
+  287      </div>
+
+/Users/xqiu/Dropbox (Personal)/Projects/Scribe/_site/docs/index.html:
+  742  <p>
+  743   <table class="image">
+  744:  <tr><td><img src= "/scribe/images/report-Fig2.jpg" width= 600></td></tr>
+  745   <tr><td class="caption">Figure 2: Visualize gene regulations with Scribe.</td></tr>
+  746   </table>
+  ...
+  757  <p>
+  758   <table class="image">
+  759:  <tr><td><img src= "/scribe/images/report-Fig3.jpg" width= 600></td></tr>
+  760   <tr><td class="caption">Figure 3: Scribe accurately reveals gene regulatory hierarchy for a variety of single-cell RNA-seq datasets.</td></tr>
+  761   </table>
+  ...
+  771   <p>
+  772   <table class="image">
+  773:  <tr><td><img src= "/scribe/images/report-Fig4.png" width= 600></td></tr>
+  774   <tr><td class="caption">Figure 4: Scribe precisely reconstructs a core regulatory network responsible for myelopoiesis.</td></tr>
+  775   </table>
+  ...
+  786  <p>
+  787   <table class="image">
+  788:  <tr><td><img src= "/scribe/images/report-Fig5.jpg" width= 600></td></tr>
+  789   <tr><td class="caption">Figure 5: Scribe avoids limitations from pseudotime-based causality inference with RNA-velocity.</td></tr>
+  790   </table>
+  ...
+  807   <p>
+  808     <table class="image">
+  809:    <tr><td><img src= "/scribe/images/report-Fig6.jpg" width= 600></td></tr>
+  810     <tr><td class="caption">Figure 6: Reconstructing lineage specific network of C. elegans’s early embryogenesis with Scribe.</td></tr>
+  811     </table>
+  ...
+  825  
+  826  <table class="image">
+  827: <tr><td><img src= "/scribe/images/vignette/report-Fig1.jpg" width= 600></td></tr>
+  828  <tr><td class="caption">Figure 1: Figure 1: Scribe, a toolkit for visualizing and inferring causal regulatory network. </td></tr>
+  829  </table>
+
+22 matches across 4 files

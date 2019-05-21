@@ -1,0 +1,106 @@
+<!DOCTYPE html>
+<html lang="{{ page.lang | default: site.lang | default: "en" }}">
+
+{% include head.html %}
+
+<body>
+  {% include header.html %}
+
+  <!-- Main jumbotron for a primary marketing message or call to action -->
+  <div class="jumbotron" style="background-image: url(images/jumbo_pancreas.png); background-size: 100%;";>
+    <div class="container">
+      <div class="text-center">
+        <h1>Scribe</h1>
+        <!-- If you want to change color of text google "HTML color code", find code for color you want, replace "#8416D0" with new code -->
+        <p><font color = "#8416D0">Inferring the causal regulatory networks from single-cell genomics datasets.</font></p>
+        <p><a class="btn btn-warning btn-lg" href="{{ site.baseurl }}/docs/#installing-monocle" role="button">Get started&raquo;</a></p>
+      </div>
+    </div>
+  </div>
+
+  <div class="container">
+    <!-- Example row of columns -->
+    <div class="row">
+
+      <div class="col-md-4">
+        <div class="text-center">
+          <img src="images/report-Fig1.jpg" height=300 width=400></img>
+          <h2>Theory</h2>
+          <p>See how Scribe employs Restricted Direct Information (RDI) to provide a secure solution for resolving complex causal regulatory netowrks.</p>
+          <p><a class="btn btn-default" href="{{ site.baseurl }}/docs/#theory-behind-scribe" role="button">View details &raquo;</a></p>
+        </div>
+      </div>
+
+      <div class="col-md-4">
+        <div class="text-center">
+          <img src="images/report-Fig8.png" height=300 width=300></img>
+          <h2>Visualization</h2>
+          <p># Explain Visualization Here</p>
+          <p><a class="btn btn-default" href="{{ site.baseurl }}/docs/#scribe-visualizes-transcriptional-response-causal-regulation-and-combinatorial-regulation-logic" role="button">View details &raquo;</a></p>
+        </div>
+      </div>
+      <div class="col-md-4">
+        <div class="text-center">
+          <img src="images/report-Fig4.png" height=300 width=270></img>
+          <h2>Causality Inference</h2>
+          <p>#Explain Causality Inference Here</p>
+          <p><a class="btn btn-default" href="{{ site.baseurl }}/docs/#scribe-a-toolkit-for-visualizing-and-inferring-causal-regulatory-network-for-single-cell-genomics-datasets" role="button">View details &raquo;</a></p>
+        </div>
+      </div>
+    </div>
+
+    <!-- START THE FEATURETTES -->
+
+    <hr class="featurette-divider">
+
+    <div class="row featurette">
+      <div class="col-md-7 col-md-push-5">
+        <h2 class="featurette-heading"><a href = "{{site.baseurl}}/docs/#scribe-incorporates-rna-velocity-for-causal-network-inference">Integration of RNA velocity and Scribe.</a></h2>
+        <p class="lead">Scribe utilizes the concept of “RNA-velocity” to detect causality from the same cell, alleviating inherent limitations of pseudotime-based inference.</p>
+
+        <!-- <p>Most single-cell RNA-Seq protocols capture only a small percentage of the mRNA in each cell, which leads to so-called "drop outs", where mRNAs that are probably present just aren't detected. This makes it hard to determine how many cells of each type there are in your experiment. Monocle has a machine-learning based algorithm for classifying cells by type even in the face of missing data, and even when your cells have been treated in different ways or collected from varying conditions. You can use it to track population dynamics, measure responses to perturbation, and even discover new cell types.</p> -->
+
+      </div>
+      <div class="col-md-5 col-md-pull-7">
+        <img class="featurette-image img-responsive center-block" src="{{site.baseurl}}/images/report-Fig5.jpg" width=300 height=300 alt="Generic placeholder image">
+      </div>
+    </div>
+
+
+    <hr class="featurette-divider">
+
+    <div class="row featurette">
+      <div class="col-md-7">
+        <h2 class="featurette-heading"><a href = "{{site.baseurl}}/docs/#scribe-visualizes-transcriptional-response-causal-regulation-and-combinatorial-regulation-logic">Inferring causal network on live imaging data.</a></h2>
+        <p class="lead">#Explain inferring causal network on live imaging data</p>
+        <!-- <p>Monocle allows you to compare groups of cells to identify genes that differ between them, even after controlling for other variables in the experiment. For example, the plot above shows genes that differ between two conditions, but only one of them, LAG3, is **also** different between cell types, even after subtracting the other effects. You can use Monocle's differential expression system to zero in on the genes that are most relevant in your experiment.</p> -->
+
+      </div>
+      <div class="col-md-5">
+        <img class="featurette-image img-responsive center-block" src="{{site.baseurl}}/images/report-Fig6.jpg" width=300 height=300 alt="Generic placeholder image">
+      </div>
+    </div>
+                  <hr class="featurette-divider">
+
+                  <!-- /END THE FEATURETTES -->
+
+                  <hr>
+                  <!--
+                  <ul class="post-list">
+                  {% for post in site.posts %}
+                  <li><article><a href="{{ site.baseurl }}{{ post.url }}">{{ post.title }} <span class="entry-date"><time datetime="{{ post.date | date_to_xmlschema }}">{{ post.date | date: "%B %d, %Y" }}</time></span></a></article></li>
+                  {% endfor %}
+                </ul> -->
+
+                <footer>
+                  <p>&copy; 2018 Xiaojie Qiu</p>
+                  <small>Jumbotron image &copy; 2017 Douglas Melton. Used with permission. </small>
+
+                </footer>
+              </div> <!-- /container -->
+
+              {% include footer.html %}
+
+            </body>
+
+            </html>

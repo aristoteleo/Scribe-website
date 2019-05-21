@@ -1,0 +1,1143 @@
+---
+layout: vanilla
+permalink: /docs/
+description: "Documentation for Scribe."
+modified: 2018-02-03
+tags: [monocle, manual, vignette]
+---
+<!DOCTYPE html>
+<html lang= "{{ page.lang | default: site.lang | default: "en" }}">
+
+  {% include head.html %}
+
+  <!-- See here for how to use the TOC control:
+  https://afeld.github.io/bootstrap-toc/ -->
+  <body  data-spy= "scroll" data-target= "#toc">
+    {% include header.html %}
+
+    <div class= "container">
+      <div class= "row">
+        <!-- sidebar, which will move to the top on a small screen -->
+        <div class= "col-sm-4">
+          <nav id= "toc" data-spy= "affix" data-toggle= "toc"></nav>
+        </div>
+        <!-- main content area -->
+        <div class= "col-sm-8">
+
+          <script src='https://cdnjs.cloudflare.com/ajax/libs/mathjax/2.7.2/MathJax.js?config=TeX-MML-AM_CHTML'></script>
+
+          <h2>Abstract</h2>
+          <p>Cellular fate commitment is governed by a hierarchical gene regulatory network. Previous network inference approaches are inherently incapable of resolving complex causal relationships since they are designed for small-scale and static bulk measurements. Here we propose Scribe, a toolkit that employs Restricted Direct Information (RDI) to reconstruct causal regulatory networks using single-cell genomics data, especially scRNA-seq data. Scribe offers a framework to intuitively visualize a myriad of regulatory responses, causal interactions as well as combinatorial regulations, and detects pairs of genes that interact and determines causality through the strength of information transferred from one to others. Our technique exploits the fact that an upstream regulator’s expression changes before its downstream targets’ that undergo coherent changes. To calibrate the expected time lag between upstream and downstream genes in scRNA-seq datasets, Scribe analyzes single-cell expression kinetics as the cells progress through the pseudotime along a cellular trajectory. Scribe also leverages the creative idea of “RNA-velocity” to detect causality from the same cell, alleviating inherent limitations of pseudotime-based inference. Scribe outperforms alternative approaches, including Granger Causality (GC) and Convergent Cross Mapping (CCM), across various datasets. Applying Scribe to several scRNA-seq datasets spanning diverse biological processes including hematopoiesis and commitment of chromaffin cells, we find that Scribe reconstructs networks which are supported by either literature or ChIP-Seq/ATAC-seq datasets. Finally, we use Scribe to build a compendium of the causal regulatory network for <i>C elegans’</i> early embryogenesis with lineage resolved live-imaging data. We anticipate that Scribe will enable single-cell biologists to reconstruct causal regulatory networks governing cell lineage differentiation for each of the many cell types in the human body.
+          </p>
+
+          <h2>Introduction</h2>
+
+          <p>
+            Most biological processes, either development, disease progression or signal response, are governed by complicated regulatory networks. It is thus of great interest to develop accurate computational algorithms to directly reverse engineer the regulatory network from observational data. In the past few decades, various progresses (\cite{bayesian network, CLR, ARCANE, the third one and WGCNA}) have been made in network inference but those efforts are limited as they only detect statistical dependence, using either correlation or mutual information, and often ignore the dynamics of regulation. Moreover, most of them are designed specifically for bulk measurements. Single cell measurements, scRNA-seq in particular, are exciting technologies revealing natural variations of expression dynamics in a large population of cells and provide unprecedented resolution of gene expression cascades required for accurate inference of regulatory networks.
+          </p>
+          <p>
+            Previously, we developed algorithms to accurately reconstruct pseudotime trajectories of cellular differentiation, to identify genes significantly diverging during lineage bifurcation (one progenitor cell type commits to two distinct cell fates) as well as to reveal their bifurcation hierarchy (\cite{BEAM, Monocle 2}) from scRNA-seq datasets. Those results imply the promise of scRNA-seq for inferring causal gene regulation from hierarchy of expression dynamics based on pseudo-time-series data.
+          </p>
+
+          <p>
+            Causal networks are much preferred over commonly used correlation networks based on statistical dependence, because in the causal network if a node is perturbed, its downstream genes and correspondingly the cellular states will be affected, thus revealing the mechanism of biological processes. Causal inference has already spurred many interests in other fields. For example, Clive Granger first proposed Granger Causality (GC) in 1969 (\cite{}) as a statistical hypothesis test for determining whether one time series (\(X_{1}\)) is useful in forecasting another (\(X_{2}\)) in economics. According to GC, if \(X_{1}\) "Granger causes" \(X_{2}\), then the predictability of \(X_{2}\) based on past values of \(X_{2}\) alone is significantly weaker than that of also based on the past values of \(X_{1}\). GC in its original formulation, however, is only able to detect linear causality. In addition, GC assumes the information of the causative factor is separable from the effects and the system is treated as pieces at a time rather than as a whole. An exciting complementary method, Convergent Cross-Mapping (CCM) based on state-space reconstruction \cite{CCM}, is recently proposed to detect pairwise non-linear interactions in deterministic systems and avoids GC’s assumption of separability. One fundamental and somewhat counterintuitive idea of CCM, distinct from GC, is that it is possible to estimate \(X_{1}\) from \(X_{2}\), but not the other way if causation is from \(X_{1}\) to \(X_{2}\). CCM first constructs shadow manifolds \(M_{X_2}\) and \(M_{X_1}\) from lagged coordinates of the time-series (\(X_{2}\)) and (\(X_{1}\)). It then tests whether states in the shadow manifold \(M_{X_2}\) can be used for estimating the states in \(M_{X_1}\) and vice versa via mapping through nearest neighbors (cross mapping). Another key idea of CCM is convergence which means that as the length of the time-series increases, the shadow manifolds become denser and the ellipsoid formed by nearest neighbors shrinks, leading to improvement of cross-map estimates. Although CCM is appealing, it cannot be generalized to stochastic systems as the Taken’s theorem, the cornerstone of CCM, will break in such scenarios.
+          </p>
+
+          <p>The <i>Scribe</i> package provides a toolkit for visualizing and reconstructing complex gene regulation for single cell genomics data.
+            This vignette provides an overview of causal regulatory network reconstruction with single cell genomics data by <i>Scribe</i> (In this initial vignettee, we mainly rely on simulation data to demonstrate <i>Scribe’s</i> power).
+            <i>Scribe</i> is a collaboration between <i>Trapnell lab</i> at UW Genome Sciences department and <i>Kannan lab</i> at UW Electrical Engineering department. At the core of <i>Scribe</i>, we used restricted direct information, which has been shown to out-performan than ”symmetric” mutual information, ”linear” Granger causality and the newly proposed ”deterministic” CCM method.
+            The users of <i>Scribe</i> are expected to have already correctly reconstructed the developmental trajectory for their single-cell genomics dataset with <i>Monocle 2</i> because it relies on the pseudotime resolved data to infer the network causality.
+            The restricted direct information is an extension of mutual information which takes into account the direction of information flow, under the assumption that the underlying processes can be described by a first order Markov model.
+            Mutual information is estimated using the Kraskov method (KSG method), which builds on a nearest-neighbor framework.</p>
+
+            <p> In fact, time-series based causal inference is of scarcity in biology (cite{Inferring causal molecular networks: empirical assessment through a community-based effort}). Previously, directed acyclic graphs based on dynamic bayesian networks have been used to infer causal relationships, but the strong assumptions (i.e., graphs need to be acyclic) they make are violated in biological settings \cite{}. On the other hand, new methods have started to emerge in single cell genomics by taking advantage of pseudotime and large samples of distinct intrinsic cell states. For example, the SCENIC method (\cite{}) combines an existing ensemble tree based algorithm (GENIE3) with a coexpression network to statistically identify enriched regulatory binding motifs and enable simultaneous cell clustering and network inference. Andrea and colleagues integrate various computational methods to perform model selection of transcriptional ordinary differential equations (ODE) models with pseudo-time-series data. Others used information measures, linear regression and boolean networks, among others, to infer regulatory network from scRNA-seq data. However, most of those methods have low accuracy, are difficult to scale up to large datasets/networks, and more importantly are not specifically designed for inferring causal regulatory networks.
+            </p>
+
+            <p>Here we introduce Scribe, a scalable toolkit, relying on recent advances in information theory, Restricted Direct Information (RDI), to accurately and efficiently infer the causal regulatory networks from single cell genomics datasets \cite{}. Scribe addresses both of the separability issue of GC and deterministicity issue of CCM by measuring the information transferred from the potential regulator to the target, conditioned on the target’s immediate previous state. Scribe is thus able to learn both linear or non-linear causality in either deterministic or stochastic systems. Additionally, Scribe provides intuitive approaches to directly visualize the responses, causality and even combinatorial causal regulations. It also incorporates methods to deal with large single-cell genomics datasets and infer transcriptomic networks, greatly expanding its scope and accessibility.
+            </p>
+
+            <p> <i>Scribe</i> can help you perform three main types of analysis:
+              <br>
+              <ol>
+                <li><b>Estimating and visualizing pairwise gene regulation.</b> Understanding how one gene activates or inhibits another gene in development, disease and through life is important.
+                  Scribe provides various function to estimate the newly developed restricted direct information (RDI) and conditional RDI (cRDI) to reveal the strenght of gene regulation.
+                  Those gene regulations can be also intuitively visualized through improved advanced visualization approach(based on the DREVI).
+                  Additionally, Scribe also supports other popular regulation inference methods, including correlation, mutual information, Granger causality and CCM.</li>
+
+                <li><b>Inferring spatial/temporal gene regulation.</b> Gene regulation is dynamic and spatial-specific.
+                  Scribe helps to identify the period of active gene regulation which may correspond to critical time point for gene intervention for genetic or immunotherapy, etc.
+                  In theory, Scribe can be also applied to spatially resolved data to reveal spatial-specific gene regulation.</li>
+
+                <li><b>Reconstructing large-scale sparse casual regulatory network.</b> Knowing the gene regulation at systems level is important for us to better understand the mechanisms of cell differentiation and carcinogenesis, etc.
+                  The regulatory hierarchy, network motifs / hubs are also of great clinic interests.
+                  Scribe provides a newly invented method for recovering a sparse direct network capturing the network regulation from the data but also satisfying well-studied large-scale network topologies.
+                </ol>
+              </p>
+
+            <p>
+              Recognizing the inherent limitation of pseudotime series that the information of gene expression fluctuation of one cell doesn’t transfer into the next cell in pseudotime (because they are different cells), Scribe takes advantage of a recent exciting analysis framework “RNA velocity”1 to measure the information transfer based on current expression state and predicted future expression from the same cell (\cite). In this work, we applied Scribe on real time confocal imaging data for about 200 transcription factors’ expression dynamics over the entire C. elegans embryogenesis to build a compendium of temporal causal regulatory networks related to an organism's’ entire developmental history.
+            </p>
+
+            <p>
+              As we are moving towards building cell atlas using scRNA-seq, our method is promising for the purpose of investigating the huge amount of data and inferring detailed regulatory networks governing cell lineage differentiation for all cell types in human body.
+            </p>
+
+          <h2 data-toc-text = "Reconstructing casual network with Scribe for scRNA-seq...">Reconstructing casual network with Scribe for scRNA-seq experiment</h2>
+
+          <p><i>Scribe</i> relies on <i>Monocle 2</i> for reconstructing the single-cell trajectory before inferring causal network.
+            We extended <i>Monocle 2</i> in a few aspects to account for the specific requirement for <i>Scribe</i>.
+            For example, in order to avoid the over- crowded nature of the cells at the terminal regions of the trajectory, we applied a simple strategy to first run Monocle 2 using
+            DDRTree to get the trajectory with complex branches and then reorder the trajectory for each branch (from the source state to the terminal state) using <i>principal curve</i>
+            (or <i>simplePPT</i>) with the low dimension space obtained from the difusion map dimension reduction technique.
+            <i>Scribe</i> provides various methods for inferring the regulatory relationship, mutual information, Granger causality and CCM.
+            We used the implementation from <i>parmigene</i>, <i>vars</i>, and <i>rEDM</i> respectively.
+            To intuitively visualize the casual regulation between pairs of genes, we generalized the <i>DREVI</i> approach ( []).
+            The network visualization relies on the <i>igraph</i>, <i>netbiov</i>, <i>arcdiagram</i> as well as the <i>HiveR</i> packages.
+            Before we can apply <i>Scribe</i> for causal network inference, we need to first run Monocle 2 for trajectory reconstruction.
+            In the following expression we will use the pre-prepared dataset from the neuron simulation introduced in the Monocle 2 paper.
+            For analyzing on a real dataset, we need to consider the over-crowded nature of the cells at the terminal regions of the Monocle 2 trajectory.
+            For resolving this issue, we will apply a simple strategy by first running <i>Monocle 2</i> using <i>DDRTree</i> to get the trajectory with complex branches and then
+            reorder the trajectory for each branch (from the source state to the terminal state) using <i>principal curve</i> (<i>simplePPT</i>) with the low dimension space obtained from the <i>diffusion map</i> dimension reduction technique.
+            See a demo for the lung dataset below. Note that <i>Scribe</i> doesn’t consider the relative value of the pseudotime and only use the order of cell in pseudotime for causal network inference.
+            The non-uniform distribution of cells across pseudotime is partially adjusted when we calculate the RDI (See details in the method section). </p>
+
+          <h3>Prepare the data for Scribe analysis</h3>
+
+{% highlight R %}
+rm(list = ls())
+load("/Users/xqiu/Dropbox (Cole Trapnell's Lab)/Monocle 2/first_revision/Monocle2_revision/RData/fig3.RData") # cds data
+load('/Users/xqiu/Dropbox (Personal)/Projects/Causal_network/causal_network/RData/neuron_network') # network data
+
+# include work data here
+
+# neuron_network not exist
+neuron_network$Type <-
+  c('Neuron', 'Oligo', 'Astro', 'Neuron', 'AO', 'Neuron', 'Neuron',
+    'Neuron', 'Neuron', "Neuron",'AO', 'AO', 'Astro', 'Oligo',
+    'Olig', 'Astro', 'Astro', 'Astro', 'Olig', 'Astro', 'Oligo')
+#
+fData(neuron_sim_cds)$gene_short_name <- fData(neuron_sim_cds)$gene_short_names
+fData(na_sim_cds)$gene_short_name <- fData(na_sim_cds)$gene_short_names
+
+{% endhighlight %}
+
+Add the demo for the lung dataset here:
+
+{% highlight R %}
+
+# add code here for demo of the lung dataset
+
+{% endhighlight %}
+
+          <h3>Visualize pairwise gene interaction </h3>
+
+          <p>The easiest way to visualize the pairwise causal gene interaction is to use plot gene pairs in pseudotime to plot the
+          expression dynamics of the gene pair along the pseudotime. For a branched trajectory, we can also use <code>plot_gene_pairs_branched_pseudotime()</code>
+          to plot the expression dynamics of the gene pair along the pseudotime in two separate lineages. Note that
+          <b>neuron_sim_cds</b> is the cds describing the commitment of neuron lineage while the <b>na_sim_cds</b> for both of the neuron and
+          the astrocyte lineages.</p>
+
+{% highlight R %}
+# show the pair-wise gene plot:
+neuron_sim_cds@lowerDetectionLimit <- 0.01
+#increase the data avoid the fitting issue
+exprs(neuron_sim_cds) <- 10^(exprs(neuron_sim_cds))
+#increase the data avoid the fitting issue
+exprs(na_sim_cds) <- 10^(exprs(na_sim_cds))
+plot_gene_pairs_in_pseudotime(neuron_sim_cds[, ],
+  gene_pairs_mat =  as.matrix(neuron_network[1, 1:2]), n_row = 1, n_col = 1) +
+  monocle:::monocle_theme_opts() + xacHelper::nm_theme()
+
+## gene_name is Pax6
+## inflection_point is 171.5
+## gene_name is Tuj1
+## inflection_point is 238
+{% endhighlight %}
+
+            <div class= "text-center">
+            <img src= "{{site.baseurl}}/images/vignette/figure1.png" width= 600>
+            </div>
+
+
+{% highlight R %}
+plot_gene_pairs_branched_pseudotime(na_sim_cds,
+    gene_pairs_mat = as.matrix(neuron_network)[1:2, 1:2],
+    n_row = 2, n_col = 2) + monocle:::monocle_theme_opts() + xacHelper::nm_theme()
+# neuron_sim_cds is not a branch trajectory
+{% endhighlight %}
+
+          <div class= "text-center">
+          <img src= "{{site.baseurl}}/images/vignette/figure2.png" width= 600>
+          </div>
+
+          <p> Scribe also supports plotting the scatter plot for the gene pair.
+            <b>plot gene pairs</b> does exactly that but also reveal more abundantly distributed regions with a contour plot.
+            In order to calculate the RDI values, Scribe computes the conditional mutual information of the state for \(X_{t-\sigma}\), \(Y_{t}\) and \(Y_{t-1}\) (see methods).
+            We can use plot rdi gene pairs to visualize this state space.
+            An interesting finding from the CCM is that time-lagged data for a single-variable is able to recover a shadow manifold corresponding to the original manifold.
+            Here I will show the 3D space for the variable \(Pax6, Mash1, Hes5\) and the shadow manifold for \(Y_{t}, Y_{t-1}, Y_{t-2}\) (\(Y\) corresponds to \(Mash1\)).
+            You can immediately identify that the time-lagged shadow manifold captures the topography of the original manifold.
+          </p>
+
+{% highlight R %}
+# we skip some functions below because they use the plotly package
+# whose figures can be rendered in a pdf.
+
+plot_lag_drevi(neuron_sim_cds,
+    matrix(c('Zic1', 'Sox8', 'Brn2', 'Myt1L', 'Tuj1', 'Stat3'),
+    ncol = 2, byrow = T)) + monocle:::monocle_theme_opts() + xacHelper::nm_theme()
+{% endhighlight %}
+
+          <div class= "text-center">
+          <img src= "{{site.baseurl}}/images/vignette/figure3.png" width= 600>
+          </div>
+
+{% highlight R %}
+
+x <- exprs(neuron_sim_cds)['Pax6', ]
+y <- exprs(neuron_sim_cds)['Mash1', ]
+z <- exprs(neuron_sim_cds)['Hes5', ]
+
+# plot_rdi_gene_pairs(x, y)
+
+# plot_ly(type = 'scatter3d', x = log10(x), y = log10(y),
+#  z = log10(z), mode = 'markers') # show the original space
+#
+# plot CCM state space and the the scatter plot in three dimension
+# plot_ccm(x) # Pax lagged state space looks pretty random
+#
+# plot_ccm(log10(y)) #Pax lagged state space looks pretty random
+#
+# plot_ccm(z) #Pax lagged state space looks pretty random
+{% endhighlight %}
+
+          <p> In order to intuitively visualize the relationship between two genes, we extend the DREVI approach, originally pro- posed by Smita Krishnaswamy, et. al.
+            In the original approach, DREVI doesn’t consider time delay, the plot rdi pairs function in Scribe can be used to visualize both the original DREVI method as well as time-delayed DREVI results.
+            From the positive and negative gene pairs, we can see the response curve for the interacting gene pairs are pretty smooth while the non-interacting genes looks pretty noisy and less smooth.
+            Moreover, from the DREVI plot for the non-interacting gene pair, a give target value can have many more corresponding source values and that the response curve is pretty much flat.
+          </p>
+
+          <p> Moreover, in order to better represent the RDI values, we also implemented a generalized approach to consider the effect of Y at earlier time point.
+            We achieve this first by fitting a curve between \(Y_{t}\), \(Y_{t-1}\) and then obtain the residual for this fitting.
+            We then plot these residual and \(x_{t-\sigma}\) time-delayed DREVI to visualize the gene regulation.
+          </p>
+
+{% highlight R %}
+# show the drevi plot result for all existing edges:
+plot_lag_drevi(neuron_sim_cds[, 1:200],
+    gene_pairs_mat = as.matrix(neuron_network[c(1, 3), 1:2]),
+    d = 1, n_row = 1, n_col = 2) +
+    monocle:::monocle_theme_opts() + xacHelper::nm_theme()
+{% endhighlight %}
+
+          <div class= "text-center">
+          <img src= "{{site.baseurl}}/images/vignette/figure4.png" width= 600>
+          </div>
+
+{% highlight R %}
+plot_lag_drevi(neuron_sim_cds[, 1:200],
+  gene_pairs_mat = matrix(c('Zic1', 'Sox8', 'Brn2', 'Myt1L'),
+  byrow = T, nrow = 2), n_row = 1, n_col = 2, scales = 'free') +
+  monocle:::monocle_theme_opts() + xacHelper::nm_theme()
+{% endhighlight %}
+
+          <div class= "text-center">
+          <img src= "{{site.baseurl}}/images/vignette/figure5.png" width= 600>
+          </div>
+
+          <h3>Assess temporal causal gene regulation </h3>
+
+          <p> Gene regulation is dynamic and the timing of regulation varies from gene-pair to gene-pair.
+            We developed a strategy (implemented through the <b>rdi_crdi_pseudotime</b> function) to estimate the temporal causal regulation in Scribe to helps to identify the period of strong gene regulation.
+          </p>
+
+{% highlight R %}
+# test temporal RDI, etc.
+gene_name_vec <- c('Pax6', 'Mash1', 'Brn2', 'Zic1', 'Tuj1', 'Hes5','Scl', 'Olig2',
+                   'Stat3', 'Myt1L', 'Aldh1L', 'Sox8', 'Mature')
+
+#13 mature gives Na values
+rdi_crdi_pseudotime_res_list <-
+    rdi_crdi_pseudotime(t(exprs(na_sim_cds)[1:12, 1:200]), window_size = 50)
+
+rdi_res <- rdi_crdi_pseudotime_res_list$rdi_res
+crdi_res <- rdi_crdi_pseudotime_res_list$crdi_res
+
+dim(rdi_res) <- c(dim(rdi_res)[1], dim(rdi_res)[2] * dim(rdi_res)[2])
+
+all_cmbns <- expand.grid(gene_name_vec[1:12], gene_name_vec[1:12])
+valid_all_cmbns_df <-
+  data.frame(pair = paste((all_cmbns$Var1),
+            (all_cmbns$Var2), sep = ' -> '),
+            pval = 0)
+
+row.names(valid_all_cmbns_df) <- valid_all_cmbns_df$pair
+rdi_res <- as.data.frame(rdi_res)
+colnames(rdi_res) <- valid_all_cmbns_df$pair
+
+valid_all_cmbns_df <-
+  data.frame(pair = paste((as.character(neuron_network[, 1])),
+                          (as.character(neuron_network[, 2])),
+                          sep = ' -> '),
+                          pval = 0)
+valid_rdi_res <- rdi_res[, as.character(valid_all_cmbns_df$pair)]
+norm_valid_rdi_res <-
+  apply(valid_rdi_res, 2, function(x) (x - min(x)) / (max(x) - min(x)))
+
+pheatmap::pheatmap(t(norm_valid_rdi_res[, ]), cluster_rows = F,
+  cluster_cols = F, annotation_names_row = T, border_color = NA)
+
+{% endhighlight %}
+
+          <div class= "text-center">
+          <img src= "{{site.baseurl}}/images/vignette/figure6.png" width= 600>
+          </div>
+
+{% highlight R %}
+
+valid_all_cmbns_df_back <-
+    data.frame(pair = paste((as.character(neuron_network[, 1])),
+                            (as.character(neuron_network[, 2])),
+                             sep = ' -> '), pval = 0)
+
+valid_rdi_res_back <- rdi_res[, as.character(valid_all_cmbns_df_back$pair)]
+norm_valid_rdi_res_back <- apply(valid_rdi_res_back, 2,
+                           function(x) (x - min(x)) / (max(x) - min(x)))
+
+pheatmap::pheatmap(t(norm_valid_rdi_res_back[, ]),
+                     cluster_rows = F, cluster_cols = F,
+                     annotation_names_row = T, border_color = NA)
+
+{% endhighlight %}
+
+<div class= "text-center">
+<img src= "{{site.baseurl}}/images/vignette/figure6.png" width= 600>
+</div>
+
+{% highlight R %}
+
+# plot crdi_res
+dim(crdi_res) <- c(dim(crdi_res)[1], dim(crdi_res)[2] * dim(crdi_res)[2])
+valid_all_cmbns_df <- data.frame(pair = paste((all_cmbns$Var1),
+                                (all_cmbns$Var2),
+                                 sep = ' -> '),
+                                 pval = 0)
+
+colnames(crdi_res) <- valid_all_cmbns_df$pair
+
+valid_all_cmbns_df <- data.frame(pair = paste((as.character(neuron_network[, 1])),
+                                              (as.character(neuron_network[, 2])),
+                                              sep = ' -> '),
+                                              pval = 0)
+
+valid_crdi_res <- crdi_res[, as.character(valid_all_cmbns_df$pair)]
+norm_valid_crdi_res <- apply(valid_crdi_res,
+                             2,
+                             function(x) (x - min(x)) / (max(x) - min(x)))
+
+# norm_valid_crdi_res_ordered <-
+  #  norm_valid_crdi_res[, order(unlist(apply(norm_valid_crdi_res, 2, which.max)))]
+
+pheatmap::pheatmap(t(norm_valid_crdi_res[, ]),
+                     cluster_rows = F,
+                     cluster_cols = F,
+                     annotation_names_row = T,
+                     border_color = NA)
+
+{% endhighlight %}
+
+<div class= "text-center">
+<img src= "{{site.baseurl}}/images/vignette/figure7.png" width= 600>
+</div>
+
+{% highlight R %}
+
+pheatmap::pheatmap(t(norm_valid_crdi_res[, ]),
+                     cluster_rows = F,
+                     cluster_cols = F,
+                     annotation_names_row = T,
+                     border_color = NA)
+
+{% endhighlight %}
+
+<div class= "text-center">
+<img src= "{{site.baseurl}}/images/vignette/figure7.png" width= 600>
+</div>
+
+{% highlight R %}
+
+neuron_net <- graph_from_edgelist(as.matrix(neuron_network[, 1:2]), directed = T)
+
+layout_coord <- layout_as_tree(neuron_net)
+row.names(layout_coord) <- V(neuron_net)$name
+layout_coord["Tuj1", ] <- c(-1.25,  0)
+
+layout_coord["Scl", ] <- layout_coord["Olig2", ]
+layout_coord["Olig2", ] <- c(1.25, 1.00)
+layout_coord["Stat3", ] <- c(0.4, 0.5)
+layout_coord["Aldh1L", ] <- c(-0.75, -1)
+layout_coord["Myt1L", ] <- layout_coord["Sox8", ]
+layout_coord["Sox8", ] <- c(1.95, 0)
+
+color = rep('blue', 21)
+color[c(5, 12, 14, 16)] <- 'red'
+
+res <- apply(norm_valid_crdi_res,
+             2,
+             function(x) c(mean(x[1:37]),
+             mean(x[38:64]),
+             mean(x[65:111]),
+             mean(x[112:150])))
+
+plot(neuron_net, layout = layout_coord, edge.width=res[1, ] * 5, edge.color = color)
+{% endhighlight %}
+
+<div class= "text-center">
+<img src= "{{site.baseurl}}/images/vignette/figure8.png" width= 600>
+</div>
+
+{% highlight R %}
+plot(neuron_net, layout = layout_coord, edge.width=res[2, ] * 5, edge.color = color)
+{% endhighlight %}
+
+<div class= "text-center">
+<img src= "{{site.baseurl}}/images/vignette/figure9.png" width= 600>
+</div>
+
+{% highlight R %}
+plot(neuron_net, layout = layout_coord, edge.width=res[3, ] * 5, edge.color = color)
+{% endhighlight %}
+
+<div class= "text-center">
+<img src= "{{site.baseurl}}/images/vignette/figure10.png" width= 600>
+</div>
+
+{% highlight R %}
+plot(neuron_net, layout = layout_coord, edge.width=res[4, ] * 5, edge.color = color)
+{% endhighlight %}
+
+<div class= "text-center">
+<img src= "{{site.baseurl}}/images/vignette/figure11.png" width= 600>
+</div>
+
+          <h3>Estimate time delay for gene pairs </h3>
+
+          <p> An important parameter required for causal network inference in Scribe is the proper time-delay between two genes.
+            Scribe provides two empirical approaches to estimate this parameter: for the linear trajectory, Scribe identifies the inflection point for each gene and the difference between this two genes is used as the time delay; for a branch trajectory, Scribe identifies the branch time point for each gene and the difference between this two genes is used as the time delay.
+            <code>estimate_turning_point()</code> is the function to estimate the time delay between genes while the <code>plot_time_delay</code> heatmap can be used to visualize the time delay between any pairs of genes from the cds.
+          </p>
+
+{% highlight R %}
+na_sim_cds <- estimate_turning_point(na_sim_cds)
+plot_time_delay_heatmap(na_sim_cds, use_gene_short_name = F)
+## There are NA values in the calculated turining points,
+##   the time delay is set to 0 by default
+{% endhighlight %}
+
+          <div class= "text-center">
+          <img src= "{{site.baseurl}}/images/vignette/figure12.png" width= 600>
+          </div>
+
+          <h3>Infer and visualize gene regulatory network </h3>
+
+          <p> We can infer the gene regulatory network through <code>calculate_rdi_multiple_run_cpp</code> function.
+            This function will return a list with the following elements: a. <b>RDI</b> (dimension is number of genes X length of delays times number of genes), vector of <b>delays</b>, <b>max_rdi_value</b>, and <b>max_rdi_delays</b> (the matrices for the all possible pairs of gene regulation).
+            After we run calculate rdi multiple run cpp, we can further calculate the conditional RDI values between all possible pair of genes by conditioning the top highest incoming node(s) based on the RDI results.
+            Scribe can concatenate multiple directly related trajectory (for example different lineage commitment from the same developmental trajectory) for RDI calculation (that is why the term ”multiple run” appears in the function).
+            Scribe will also provide a procedure to sparsify the RDI/cRDI matrix to ensure the distribution of indegree of the network follows the exponential distribution while the distribution of outdegree follows the power-law distribution (this part is still under development).
+            In Scribe, we provided a variety of approaches to visualize the RDI network we retrieved in the end. This can be done either by using the heatmap, igraph plotting function, the hiearical plot (based on <b>level.plot</b> in netbiov package), the arc diagram plot as well as the Hive plot.
+          </p>
+
+{% highlight R %}
+# prepare the data (row is sample, column is gene)
+data <- t(exprs(neuron_sim_cds)[, 1:200])
+noise = matrix(rnorm(mean = 0,
+                     sd = 1e-10,
+                     nrow(data) * ncol(data)),
+                     nrow = nrow(data))
+
+run_vec <- rep(1, nrow(data)) # run information for each cell
+
+# create the network graph we want to estimate RDI
+# (here we calculate all possible pair of gene regulation)
+tmp <- expand.grid(1:ncol(data), 1:ncol(data), stringsAsFactors = F)
+super_graph <- tmp[tmp[, 1] != tmp[, 2], ] - 1
+super_graph <- super_graph[, c(2, 1)]
+
+rdi_list <- calculate_rdi_multiple_run_cpp(data + noise, delay = c(1),
+                                           run_vec - 1,
+                                           as.matrix(super_graph),
+                                           method = 1,
+                                           turning_points = 0) #* 100 + noise
+
+dimnames(rdi_list$max_rdi_value) <- list(gene_name_vec, gene_name_vec)
+con_rdi_res_test <-
+  calculate_multiple_run_conditioned_rdi_wrap(data + noise, as.matrix(super_graph),
+                                              as.matrix(rdi_list$max_rdi_value),
+                                              as.matrix(rdi_list$max_rdi_delays),
+                                              run_vec - 1, 1)
+
+dimnames(con_rdi_res_test) <- list(gene_name_vec, gene_name_vec)
+
+# visualize the network by heatmap
+pheatmap::pheatmap(rdi_list$max_rdi_value,
+                   cluster_rows = F,
+                   cluster_cols = F,
+                   annotation_names_col = T,
+                   border_color = NA)
+{% endhighlight %}
+
+<div class= "text-center">
+<img src= "{{site.baseurl}}/images/vignette/figure13.png" width= 600>
+</div>
+
+{% highlight R %}
+pheatmap::pheatmap(con_rdi_res_test,
+                   cluster_rows = F,
+                   cluster_cols = F,
+                   annotation_names_col = T,
+                   border_color = NA)
+{% endhighlight %}
+
+<div class= "text-center">
+<img src= "{{site.baseurl}}/images/vignette/figure14.png" width= 600>
+</div>
+
+{% highlight R %}
+# in the following, I will show how to visualize a large scale network
+# load the network:
+load("/Users/xqiu/Dropbox (Personal)/Projects/Monocle2_revision/RData/res")
+# load the res (we need to mannually set the initial_nodes 1:2 in
+# .process_graph1 function)
+
+
+plot_causal_network(res$g, type = 'igraph', layout = layout_in_circle)
+{% endhighlight %}
+
+<div class= "text-center">
+<img src= "{{site.baseurl}}/images/vignette/figure15.png" width= 600>
+</div>
+
+{% highlight R %}
+# plot_network(res$g, type = 'hiearchy')
+plot.netbiov(res)
+{% endhighlight %}
+
+<div class= "text-center">
+<img src= "{{site.baseurl}}/images/vignette/figure16.png" width= 600>
+</div>
+
+{% highlight R %}
+plot_causal_network(res$g, type = 'arcdiagram')
+{% endhighlight %}
+
+<div class= "text-center">
+<img src= "{{site.baseurl}}/images/vignette/figure17.png" width= 600>
+</div>
+
+          <h2>The Scribe Object </h2>
+
+          <p>The <b>monocle</b> package takes a matrix of gene expression values as calculated by <b>Cufflinks</b> or another gene expression estimation program.
+            Monocle can work with relative expression values (e.g. FPKM or TPM units) or absolute transcript counts (e.g. from UMI experiments).
+            Monocle also works ``out-of-the-box'' with the transcript count matrices produced by <a href = "https://support.10xgenomics.com/single-cell/software/overview/welcome">CellRanger</a>, the software pipeline for analyzing experiments from the 10X Genomics Chromium instrument.
+            Monocle also works well with data from other RNA-Seq workflows such as <a href = "http://biorxiv.org/content/early/2017/02/02/104844">sci-RNA-Seq</a> and instruments like the Biorad ddSEQ.
+            Although Monocle can be used with raw read counts, these are not directly proportional to expression values unless you normalize them by length, so some Monocle functions could produce nonsense results.
+            If you don't have UMI counts, We recommend you load up FPKM or TPM values instead of raw read counts.</p>
+
+          <h3>The Scribe Class: need to discuss </h3>
+
+          <p><b>Scribe</b> holds single cell expression data in objects of the <b>CellDataSet</b> class. The class is derived from the Bioconductor <code>ExpressionSet</code> class, which provides a common interface familiar to those who have analyzed microarray experiments with Bioconductor. The class requires three input files:
+ <ol>
+   <li> <code>exprs</code>, a numeric matrix of expression values, where rows are genes, and columns are cells
+   <li> <code>phenoData</code>, an <code>AnnotatedDataFrame</code> object, where rows are cells, and columns are cell attributes (such as cell type, culture condition, day captured, etc.)
+   <li> <code>featureData</code>, an <code>AnnotatedDataFrame</code> object, where rows are features (e.g. genes), and columns are gene attributes, such as biotype, gc content, etc.
+ </ol>
+
+ The expression value matrix <b>must</b> have the same number of columns as the <code>phenoData</code> has rows, and it must have the same number of rows as the <code>featureData</code> data frame has rows.
+ Row names of the <code>phenoData</code> object should match the column names of the expression matrix. Row names of the <code>featureData</code> object should match row names of the expression matrix. Also, one of the columns of the
+ <code>featureData</code> must be named "gene_short_name".</p>
+
+ <p>You can create a new <code>CellDataSet</code> object as follows:</p>
+
+ {% highlight R %}
+
+ # Ignore this portion for now
+
+ {% endhighlight %}
+
+ <p> This will create a CellDataSet object with expression values measured in FPKM, a measure of relative expression reported by Cufflinks.
+   By default, Monocle assumes that your expression data is in units of transcript counts and uses a negative binomial model to test for differential expression in downstream steps.
+   However, if you're using relative expression values such as TPM or FPKM data, see below for how to tell Monocle how to model it in downstream steps. </p>
+
+ <p>This will create a <a href = "https://rdrr.io/bioc/monocle/man/CellDataSet.html">CellDataSet</a> object with expression values measured in
+ FPKM, a measure of relative expression reported by Cufflinks. By default,
+ Monocle assumes that your expression data is in units of transcript counts and
+ uses a negative binomial model to test for differential expression in downstream
+ steps. However, if you're using relative expression values such as TPM or FPKM
+ data, see below for how to tell Monocle how to model it in downstream steps.</p>
+
+ <p>
+ <div class= "panel panel-warning">
+ <div class= "panel-heading">
+ <h3 class= "panel-title" data-toc-skip>Don't normalize data yourself</h3>
+ </div>
+ <div class= "panel-body">
+ if you do have UMI data, you should <i>not</i> normalize it yourself prior to creating your <code><a href = "https://rdrr.io/bioc/monocle/man/CellDataSet.html">CellDataSet</a></code>.
+ You should also <i>not</i> try to convert the UMI counts to relative abundances (by converting it to FPKM/TPM data).
+ You should <i>not</i> use <code><a href = "https://rdrr.io/bioc/monocle/man/relative2abs.html">relative2abs()</a></code> as discussed below in the section on  <a href = "{{ site.baseurl }}/docs/#converting-tpm-fpkm-values-into-mrna-counts-alternative"> Converting TPM to mRNA Counts</a>. Monocle will do all needed normalization steps internally.
+ Normalizing it yourself risks breaking some of Monocle's key steps.
+ </div>
+ </div>
+ </p>
+
+ <h2 data-toc-text = "Scribe, a toolkit for visualizing and inferring causal...">Scribe, a toolkit for visualizing and inferring causal regulatory network for single cell genomics datasets</h2>
+
+ <p>An upstream regulator’s expression dynamics (or dynamic fluctuations of the cause) precede the response of its downstream genes (or the targets). This fact can be leveraged to detect causal interaction between gene-pairs via quantifying the amount of information transferred from a potential regulator at a previous state to the current state of the target. Previously, we proposed Restricted Directed Information (RDI) (or more recently, the uniformalized RDI (uRDI) which improves causality estimation by alleviating sampling bias) as a novel information metric to accurately and efficiently quantify causality \cite{RDI, uRDI}. Built upon RDI (uRDI), we developed a toolkit, Scribe, that is specifically designed for the analysis of single-cell genomics datasets, especially single-cell RNA-seq, to reconstruct transcriptomic causal regulatory networks (Fig 1). Even though Scribe is generally applicable for any time-series datasets; it is particularly tailored to analyze scRNA-seq data. Scribe delineates single-cell expression kinetics as the cells progress through the pseudotime along a cellular trajectory. To calibrate the expected time lag between upstream and downstream genes in scRNA-seq data, Scribe relies on Monocle 2 or other tools to reconstruct a pseudo-time-series data. It then estimates the causality strength from this pseudo-time-series with RDI (uRDI) for a set of gene-pairs which is further used to build a causal network. In order to reconstruct a causal network with statistically significant edges as well as satisfying known biological network properties, Scribe prunes the network first with a well established technique, Context Likelihood Relatedness (CLR) \cite{}, and then opts for a new method for directed graph regularization to ensure the network satisfying certain well-known in/out-degree distribution constraints (See Method, Supplementary File S1). Scribe also provides various functionalities to intuitively visualize target response, gene-pair causal interaction and combinatorial regulation from two regulators.
+ </p>
+
+ <p> In order to demonstrate the performance of Scribe, we first simulated the differentiation of central nervous system with a minimal regulatory network through a set of stochastic differential equations (SDEs) and then inferred the causal network with Scribe and other approaches. Scribe outperforms alternative techniques, including GC and CCM across various settings on this simulation datasets (Fig 1, Fig SI1) and achieves recovery of the true network, thus validating it is theoretically favorable compared to alternative techniques.
+ </p>
+
+<p>
+ <table class="image">
+ <tr><td><img src= "{{site.baseurl}}/images/report-Fig2.jpg" width= 600></td></tr>
+ <tr><td class="caption">Figure 2: Visualize gene regulations with Scribe.</td></tr>
+ </table>
+</p>
+
+ <p> (A) Examples of three-gene regulatory motifs in a minimal network describing neurogenesis. Top: Zic1 and Brn2 both activate Tuj1; Bottom: Pax6 activates both of Mash1 and Hes5 and there is a mutual inhibition between Mash1 and Hes5. For the full regulatory network, see Fig SI1 ref. \cite{(Plos one)}. For panels B-E, all figures are labeled with the top motif and vice versa. (B) Response visualization reveals the regulatory response of the target to the regulator. Here, response of Brn2 to Tuj1 is a sigmoid function revealing activation regulation while response of Mash1 to Hes5 is a threshold function revealing threshold repression. X-axis corresponds to the regulator’s previous expression with a time lag  () while y-axis corresponds to target’s current expression (). The heatmap corresponds to the rescaled normalized conditional density for two genes (), similar to the DREVI plot from ref. XXX. The red line represents the most probable value for the target given a regulator’s expression. The rug plot on the axis corresponds to the density of cells at a particular value. (C) A causality visualization reveals the information transfer from one gene to another. X-axis corresponds to the regulator’s previous expression with a time lag  while y-axis corresponds to the target gene’s pastlast expression (immediate previous state). The heatmap corresponds to the expectation of the target gene’s current expression given the target’s pastlast expression and regulator expression with a time lag . For each column (for example, red box 1), it indicates the relationship for the target gene’s pastlast to current expression (memory of past) given a particular value for the regulator while for each row (for example, red box 2), it indicates the relationship from the regulator to its target given the pastlast state of target itself (effect from the regulator). By considering both dimensions of causality visualization, the information transfer from the regulator to the target given its history () can be intuitively grasped. (D) Scatterplot describes relationships of gene regulations with time delay. Left: corresponds to the red box 1 (memory of past) in Panel C; Right: corresponds to the red box 2 (effect from the regulator) in Panel C. (E) A combinatorial regulation visualization reveals the combinatorial gene regulation from two regulators to a target gene. X-axis corresponds to the regulator’s previous expression with a time lag  while y-axis corresponds to another regulator’s gene expression with another time lag . The heatmap corresponds to the expected value of the target gene’s current expression given both of the regulators’ expressions with the time lags ( or ). For this simulation, all the time delays ,  or  are set to be . Note also that we used three color themes to distinguish three different types of visualizations.
+ </p>
+
+ <h2 data-toc-text = "Scribe visualizes transcriptional response, causal regulation...">Scribe visualizes transcriptional response, causal regulation and combinatorial regulation logic</h2>
+
+ <p> It is of great interest to have visual intuition of gene regulations, be it the delayed response of a target to the upstream regulator, the associated information transfer (corresponds to causality) or even the combinatorial regulation of multiple regulators. However, single cell measures are often highly noisy, frustrating the attempt to develop visualization tools. Moreover, single-cell measures are biased as it often heavily profiles steady states while infrequently samples transition states. Because most of the cells frequently reside in the steady state, single cell measures often infrequently samples cells at transition states. </p>
+
+ <p> Since the rare transition states often depict interesting regulations between regulators and targets, we seek to emphasize those transition states by visualizing the potential causality (See Fig 1). In contrast to traditional approach for visualizing the factual causality (how much influence does the regulator exert on target under the current probability of the cause regulator) between genes with scatter-plots, we employed a heatmap of renormalized conditional-density estimate of the potential target’s expression level to visualize the response function of the target to the regulator, similar to that of the previously described DREVI visualization. In contrast to DREVI, Scribe specifically considers response time-delay between potential regulators and their targets. Applying this visualization to simulated neuron lineage commitment data based on the minimal CNS network, we correctly recover a sigmoid function or threshold-inhibition function for the delayed response of Tuj1 to Brn2 or that of Mash1 to Hes5 (Fig SI1). Scribe further visualizes causal regulations as a heatmap in which the horizontal dimension corresponds to response function given a particular expression level of the target at previous time point while the vertical dimension the target’s “memory of history” given a particular expression level of the regulator at previous time point. Scribe is able to visualize various response functions and a multitude of patterns of information transfer in either the CNS network or in other two-gene motifs (Fig 2, Fig SI1-2).  When we visualize the expected target’s expression calculated through a Gaussian kernel with two regulators, we find Scribe is able to dissect complex additive regulations in the CNS network as well as common two-input combinatorial regulation logics, implying its power in guiding the interpretations of complex gene regulations (Fig 2, Fig SI2).
+ </p>
+
+ <p>
+ <table class="image">
+ <tr><td><img src= "{{site.baseurl}}/images/report-Fig1.jpg" width= 600></td></tr>
+ <tr><td class="caption">Figure 1: Scribe, a toolkit for visualizing and inferring causal regulatory network. </td></tr>
+ </table>
+ </p>
+
+ <p> Figure 2: Visualize gene regulations with Scribe. ( A ) Examples of three-gene regulatory motifs in a minimal network describing neurogenesis. Top:  Zic1 and  Brn2 both activate  Tuj1 ; Bottom:  Pax6 activates both of  Mash1 and  Hes5 and there is a mutual inhibition between Mash1 and  Hes5 . For the full regulatory network, see  Fig SI1  ref. \cite{(Plos one)}. For panels B-E , all top figures correspond to the top motif and  vice versa .  ( B)  Response visualization reveals the regulatory response of the target to the regulator. Here, response of  Brn2 to  Tuj1 is a sigmoid function revealing activation regulation while response of  Mash1 to  Hes5 is a threshold function revealing threshold repression. X-axis corresponds to the regulator’s previous expression with a time lag \(d (x_{t-d})\) while y-axis corresponds to target's current expression \((y_t)\). The heatmap corresponds to the rescaled normalized conditional density for two genes
+   \((P(x_{t-d}, y_t|y_{t-1}))\), similar to the DREVI plot from ref. XXX. The red line represents the most probable value for the target given a regulator’s expression. The rug plot on the axis corresponds to the density of cells at a particular value. ( C ) A causality visualization reveals the information transfer from one gene to another. X-axis corresponds to the regulator’s previous expression with a time lag \(d\) while y-axis corresponds to the target gene’s last expression (immediate previous state). The heatmap corresponds to the expectation of the target gene’s current expression given the target’s last expression and regulator expression with a time lag \(d\). For each column (for example,  red box 1), it indicates the relationship for the target gene’s last to current expression ( memory of past ) given a particular value for the regulator while for each row (for example,  red box 2), it indicates the relationship from the regulator to its target given the last state of target itself ( effect from the regulator ). By considering both dimensions of causality visualization, the information transfer from the regulator to the target given its history ( \( I(x_{t-d}, y_t|y_{t-1})\) ) can be intuitively grasped. ( D ) Scatterplot describes relationships of gene regulations with time delay. Left: corresponds to the  red box 1 (memory of past) in Panel  C ; Right: corresponds to the  red box  2 (effect from the regulator) in Panel  C . ( E)  A combinatorial regulation visualization reveals the combinatorial gene regulation from two regulators to a target gene. X-axis corresponds to the regulator’s previous expression with a time lag \(d_1\) while y-axis corresponds to another regulator’s gene expression with another time lag \(d_2\). The heatmap corresponds to the expected value of the target gene’s current expression given both of the regulators’ expressions with the time lags ( \(d_1\) or \(d_2\) ). For this simulation, all the time delays
+   \(d\), \(d_1\), \(d_2\) are set to be 1. Note also that we used three color themes to distinguish three different types of visualizations.
+ </p>
+
+ <h2>Scribe resolves gene regulatory hierarchies</h2>
+
+ <p> In order to validate the performance of Scribe in scRNA-seq datasets, we start with asking whether Scribe is able to identify known regulatory hierarchies. We hypothesize that if Scribe correctly infers a directional causal network, the sum of outgoing edges’ causality strength should be higher in regulator genes than in their downstream targets. We confirm this hypothesis in a variety of datasets. Previously Barbara and colleagues \cite{} categorized genes as either early or late AT1 or AT2 lineage specific genes during lung epithelium differentiation. After analyzing the interactions of these early and late AT1/AT2 genes with Scribe, we find that the sum of the causality scores on the outgoing edges for the early genes is considerably higher than that for the late genes (Fig 3A). Applying Scribe on another dataset collected from dendritic cells under LPS stimulation, we again find that the known regulators \cite{} involved in the LPS response have much higher outgoing causality scores than that of targets (Fig 3B). As a third dataset to validate Scribe’s ability to identify regulators and targets, we used a network built recently for myelopoiesis based on genes significantly diverging between monocyte and granulocyte lineages, as well as enriched motif sequences in DNase hypersensitive sites (DHS) from 5-kb regions upstream and downstream of those genes \cite{}. This network has three layers; the first layer contains the master regulators (Gfi1 or Irf8), the second layer contains transcription factors targeted by the master regulators, and the third layer contains the downstream targets. Scribe also correctly infers this three-tiered regulatory hierarchy (Fig 3C). In contrast, CCM can only recover the two-tiered hierarchy in the first dataset and part of the hierarchy in the third dataset, and GC fails to find the correct hierarchy on any of the third data set.  (Fig SI3).
+ </p>
+
+<p>
+ <table class="image">
+ <tr><td><img src= "{{site.baseurl}}/images/report-Fig3.jpg" width= 600></td></tr>
+ <tr><td class="caption">Figure 3: Scribe accurately reveals gene regulatory hierarchy for a variety of single-cell RNA-seq datasets.</td></tr>
+ </table>
+</p>
+
+ <p>In order to demonstrate Scribe’s power in detecting causal regulation, we test the hypothesis that the sum of outgoing edges’ causality strength should be higher in regulators than in the targets on three different datasets (lung, LPS and blood datasets). (A) Total outgoing causality scores of the regulators is higher compared to that of the target genes across AT1 or AT2 branch. (B) Same as in panel A but for the LPS data (only wild-type cells are chosen from this dataset to avoid testing on disrupted LPS response network in the knockout cells). (C) The master regulators have highest total outgoing causality scores compared to the direct targets (transcription factors) and then the secondary targets (downstream targets). To calculate total outgoing causality score, causal scores between all gene pairs are calculated with RDI and then processed by the CLR algorithm, followed by summing up all outgoing edges’ scores for each gene. Number (N) above each boxplot corresponds to the genes used for creating the plot. An unpaired two-sample t-test is used to test each pair of hierarchical groups of genes. Only pairs with sufficient number of genes are detected as significantly different (p < 0.05). </p>
+
+ <h2 data-toc-text = "Scribe reconstructs a core regulatory network responsible...">Scribe reconstructs a core regulatory network responsible for myelopoiesis</h2>
+
+ <p> Given that Scribe is capable of inferring known regulatory hierarchies, we next explore whether it can accurately reconstruct causal regulations. Olsson and colleagues recently suggested a core network of transcription factors for myelopoiesis based on data collected from perturbation experiments as well as bulk sample ATAC-seq and ChIP-seq datasets \cite{}. This core network consists of one master regulator for either monocyte or granulocyte lineages, namely Irf8 or Gfi1, and a few downstream genes with mutual inhibition to determine the bifurcation of monocytic and granulocytic cell fate (Fig 4A). They also profiled transcriptomes of 362 single cells from flow-sorted populations to capture the entire myelopoiesis hierarchy. Pseudotime ordering of the scRNA-seq dataset leads to correct expression patterns based on the core network (Fig 4A, B). For example, from the kinetic curves in Fig 4B, we observe that as Irf8 expression increases in the monocyte lineage, Zeb2 also increases while Per3 decreases. We apply Scribe on the set of genes in the core network and nearly recover the core regulatory network perfectly: all targets (Gfi1, Irf5, Klf4, Per3, Zeb2) of Irf8 are captured while most of Gfi1’s targets are also captured (Irf8, Klf4, Per3) even though it has low expression values (Fig 4C). Interestingly, when we visualize the combinatorial regulation of Irf8 and Gfi1 to either Zeb2 or Per3, we find that Scribe captures the conflicting regulation between two regulators as well as across two targets (Fig 4D). We further apply Scribe to discover temporal causal regulations of myelopoiesis, and find that, for example, strong causal activation from Irf8 to Irf5 happens at the early stage of monocyte lineage commitment while that is delayed in granulocyte lineage commitment (Fig SI4). We build transcriptomic casual regulatory networks of haematopoiesis with the Olsson dataset and a second dataset from another study of myeloid commitment (\cite{}) and demonstrate that lineage specific regulatory networks of closely related lineages, for example the megakaryocyte and erythrocyte lineages, are more similar (Fig SI XX). Using the network either based on previously manually curated networks, or reconstructed based on ATAC-seq/ChIP-seq datasets as a surrogate of network gold-standard \cite{}, we comprehensively benchmark Scribe with other algorithms across a variety of datasets and demonstrate that Scribe performs favorably compared to all other methods in all cases (Fig SI XX).
+ </p>
+
+ <p>
+ <table class="image">
+ <tr><td><img src= "{{site.baseurl}}/images/report-Fig4.png" width= 600></td></tr>
+ <tr><td class="caption">Figure 4: Scribe precisely reconstructs a core regulatory network responsible for myelopoiesis.</td></tr>
+ </table>
+</p>
+
+ <p>
+   (A) A core network describes the key regulators during the specification of monocytes and granulocytes from \cite{Olsson data}. (B) Examples of gene-pair kinetic curves over pseudotime in the granulocyte lineage. See supplementary figure XX for other genes and in other lineages. (C) Scribe accurately recovers core regulatory network for myelopoiesis. Causal strength from regulators to all targets are calculated with RDI which is then processed with the CLR algorithm. (D) Combinatorial gene regulation from Irf8 and Gfi1 to Zeb2 or Per3. Gene expression values are denoised through reversed graph embedding and calculated as a local average. It is then rasterized when plotting as a two-dimensional heatmap (See methods for details).
+ </p>
+
+ <h2>Scribe incorporates RNA-velocity for causal network inference</h2>
+
+ <p>Pseudotime ordering is a powerful approach for assessing gene expression dynamics based on scRNA-seq data; however, it only captures the general trend and has a few inherent limitations: firstly, the gene expression fluctuations in pseudotime-series don’t necessarily propagate between nearby cells since they are distinct cells; secondly, the scale of pseudotime is arbitrary as it only measures the aggregate transcriptomic differences and thus is incapable of accounting for different transcriptomic rates at different stages of cell fate transitions; last but not least, pseudotime ordering is suitable for datasets with clear structure but challenging for those with complex dynamics. For example, pseudotime reconstruction is not ideal for processes involving both cell cycle and cell fate bifurcation processes, among others. Scribe avoids these limitations by taking advantage of an old technique from microarray data analysis that exploits detection of unspliced mRNAs as a surrogate for ongoing or recent transcription. This technique is recently generalized into scRNA-seq dataset and incorporated into the “RNA velocity” analysis framework \cite{1} to derive an approximation of the first time-derivative of transcript abundance in individual cells. “RNA velocity” offers us a straightforward approach to perform causal inference via RDI and measure the information transfer based on the current expression states and predicted future expressions (or directly through the estimated velocity magnitudes) from the same cell (Fig 5A). Note that currently one limitation of the RNA velocity algorithm is that it cannot handle lowly expressed genes that have a high dropout rate in scRNA-seq, which is a class of genes that includes many TFs. Nevertheless, recently La Manno and colleagues applied RNA-velocity on a dataset of chromaffin commitment from Schwann cell progenitors and demonstrate that it accurately captures the trend and the rate of chromaffin fate specification, as well as the associated cell cycle dynamics. We applied Scribe to identify genes that significantly bifurcate between the Schwann cell branch and chromaffin cell branch (Fig 5B, C). We find that those genes are enriched in processes related to XXX and that some programs, for example, XXX, turns on but others, including XXX turns off on the path from SCP cells to mature chromaffin cells (Fig 5C). We cluster transcription factors among those genes into two clusters, similarly other informative genes into ten different clusters based on their expression dynamics on the chromaffin branch. A causal network from the clusters of transcription factors to the clusters of other genes reveal complex gene regulation patterns involved in chromaffin cell fate commitment (Fig 5C, D). Based on a previously suggested set of transcription factors, we built a core network responsible for the chromaffin cell specification (Fig 5E). From the core network,  two feed-forward loops (FFL) motifs are identified \cite{} (Eya1-Phox2a-Erbb3 or Gata3-Phox2a-Notch1) which are partially confirmed from existing molecular interactions \cite{} retrieved from STRING database (Fig SI5). We find the same network motifs are not included in the causal network inferred from pseudo-time-series data. Moreover, the transcriptomic causal network inferred from RNA-velocity matches well with that from pseudo-time-series data but also includes more network motifs shown to be enriched in cell fate specification (Fig SI5). Those results provide potential mechanistic explanation of fate commitment of chromaffin cells.</p>
+
+<p>
+ <table class="image">
+ <tr><td><img src= "{{site.baseurl}}/images/report-Fig5.jpg" width= 600></td></tr>
+ <tr><td class="caption">Figure 5: Scribe avoids limitations from pseudotime-based causality inference with RNA-velocity.</td></tr>
+ </table>
+</p>
+
+ <p> (A) Incorporating RNA velocity analysis with causality inference. A gene with multiple exons (pink box, E) and introns (blue line, I) is transcribed into immature RNA molecules and quantified with scRNA-seq. The RNA-velocity analysis framework will estimate both the exon and intron expression levels for each cell \(i\), \(C_i\).
+   It then calculates RNA-velocity for each gene \(\vec{V_i}\) and predicts the future exon expression of \(E^{predict}\) after \(\Delta{t} = 1\). Assuming the time delay from the regulator to the target is 1, Scribe calculates causality from the potential regulator to the target with the conditional mutual information between the current regulator’s exon expression \(x_t\) to the predicted target exon expression \(y_{t+1}\) (or the estimated magnitude of RNA velocity
+   \(||\vec{V_i}_2\)) conditioned on the current target exon expression \(y_t\) or by the formula \(I(x_t; y_{t+1})|y_t\) (or \(I(x_t; ||\vec{V_i}||_2|y_t)\)). Since \(x_t, y_{t+1}(||\vec{V_i}||_2), y_t\) are all from the same cell, this approach thus avoids several limitations from pseudotime-based causality inference (see methods). (B) RNA-velocity vector projected onto the first two latent DDRTree reduced dimensions. A small subset of arrows are used to visualize the velocity field of the cells. S: Sympathoblasts; C: Chromaffin. SCP: Schwann Cell Progenitor. The color of each cell corresponds to the cluster id from Fig 5B of ref. XXXX. Arrow outside of the tree corresponding to the path from SCP to chromaffin cells. Only exon values from RNA-velocity framework are used to reconstruct the developmental trajectory. (C) Clusters of TFs or potential targets from the chromaffin cell path enrich in relevant biological pathways. Expression dynamics of significant branching genes between C and S fate are clustered (TF: 2 clusters; Targets: 10 clusters) to obtain cluster-specific average expression kinetics. The enriched pathways are based on gene ontology. (D) Causal strength between clusters of TFs and clusters of target genes. Red nodes correspond to TF clusters (on the top) while purple nodes target clusters. The curve inside each node corresponds to the cluster-specific average expression dynamics along the chromaffin cell path. Edge width corresponds to estimated causality strength. (E) A core causal network for chromaffin cells commitment inferred based on RNA-velocity. Gene set is collected from Ref. XXXX. CLR (context likelihood relevance) is used to remove spurious causal edges in the network (see methods). Network layout is an arc plot where all the genes are ordered on a line, sorted by the hub centrality score (see method) so that the genes with high hub scores are located on the left. The edge on top of the line corresponds to interactions starting from the gene on the left to the one on the right and vice versa. The width of the edge corresponds to the normalized causality score of gene interactions returned after applying CLR on RDI values. Gene names are magnified below a horizontal line. (F) Two potential coherent FFL (feed-forward loop) motifs of chromaffin differentiation are discovered from the core network.
+ </p>
+
+ <h2 data-toc-text = "Scribe dissects lineage specific network of C. elegans’...">Scribe dissects lineage specific network of C. elegans’ early embryogenesis</h2>
+
+ <p>
+   In principle, Scribe is able to detect causality for any time-series data, not just scRNA-seq. Here we demonstrate its power by inferring causal networks from live specimen confocal imaging data in Caenorhabditis elegans embryos. These data consist of 265 time series, that track expression dynamics of individual transcription factors by measuring the fluorescence intensity of reporter constructs at one minute intervals in every cell of the developing embryo for the first ~250 minutes of embryogenesis. There are two types of reporters: a transcription factor gene directly tagged with a fluorescent protein (protein-fusion) or a fluorescently-tagged histone protein driven by the promoter of that transcription factor1,2. We note two caveats to analyzing these data with Scribe. First, although the promoter-fusion data shed light on the induction kinetics of the TF of interest, once the fluorescent reporter is expressed it follows the trafficking and degradation kinetics of the histone protein, and not the TF. Second, the time series for each TF was captured in a different embryo, so this may introduce noise that obscures the regulator/target relationships between the TFs although the C. elegans development process is highly robust. Nevertheless, this data set represents an unprecedented view of TF activity at high spatiotemporal resolution during the early development of a complex organism (Fig 6A, Fig SI6).
+ </p>
+
+ <p>We first verify that known master regulators for intestine (end-3/1, elt-2/7), muscle (hlh-1, hnd-1, unc-120), epidermis (elt-1/3, lin26, nhr25) cells as well as that for particular lineages, for example, AB  or MS lineages, all follow the supposed expression timing (Fig 6B, Fig SI6). Scribe is also able to correctly capture the causal interactions among those master regulators (Fig 6C, Fig SI6C). We find that along the path to becoming a particular cell, for example the intestine cell Ealap, the 265 transcription factors show distinctive temporal gene expression patterns. For example, there is a large group of genes (including end-1/3, elt-2/7) that turns on over time in this lineage, another much smaller group that progressively turns off, and a final group of genes that has multiple gene expression peaks. This observation of temporal gene regulations inspires us to perform an integrative analysis to infer the maintenance (the network maintaining the cell fate) and commitment (the network involved in generating different cells after cell division) casual regulatory networks in each cell and during each cell division at different time point (Fig 6E, F). We find that both the maintenance and the commitment networks become increasingly complicated as cells divide along the lineage tree. We also find that although causal commitment networks for the sister cells are distinct from each other the maintenance network is more similar. Since each cell or cell division is associated with a particular time and space dimension, the causal networks simultaneously recover time or spatially-dependent gene regulation, including regulation across anterior-posterior axis as well as left-right dimension. Scribe also identifies lineage specific causal network and confirms that similar lineages (for example, E and MS lineages) share similar causal regulations (Fig 6G). This analysis demonstrates Scribe’s power in building the first compendium of the causal regulatory network for early C. elegans embryogenesis. (Fig 6F, Fig SI7).
+ </p>
+
+ <p>
+   <table class="image">
+   <tr><td><img src= "{{site.baseurl}}/images/report-Fig6.jpg" width= 600></td></tr>
+   <tr><td class="caption">Figure 6: Reconstructing lineage specific network of C. elegans’s early embryogenesis with Scribe.</td></tr>
+   </table>
+ </p>
+
+ <p>(A) Procedure for measuring TFs (transcription factors) protein expression dynamics in real-time for every cell during early C. elegans embryogeneis. (1) Protein-fusion RFP reporter is used to measure transcription factor protein expression level with 3D live imaging every minute in each cell while a ubiquitous histone-GFP marker is used to trace the C. elegans cell lineage. (2) A computational algorithm (\cite{Bob’s papers}) is used to map the fluorescence data onto the invariant cell lineage until around 350 - 550 minute after forming zygote and to align the time series data for different TFs. By combining expression measures in each corresponding cell from each embryo, we obtain a 3D tensor with dimensions of 265 genes X 550 time points X 1365 (in total more than 180, 000 valid data points, removing cells that don’t valid measurements). (B) Single cell lineage-resolved fluorescence data captures temporal dynamics of E lineage master regulators during C. elegans embryogenesis. The expression for each gene is scaled to be between 0 and 1 and then smoothed using loess regression. (C) Scribe reconstructs the causal regulatory network for the four master regulators (end-1/3, elt-2/7). (D) Expression dynamics for 265 report TFs along the lineage to becoming the Ealap cell. The entire developmental lineage from the first E cell all the way to the Ealap cell in each embryo for each TF reporter is used to make the heatmap. The raw fluorescence intensity is scaled to be between 0 and 1 and then smoothed using loess regression. The order of genes in each row is calculated as previously (\cite{Hanna’s paper}) See supplementary figure XX for similar plots to visualize master regulators’ dynamics as well as all gene expression dynamics along a particular single-cell lineage commitment in muscle, epidermis and neuron cell types, etc. (E) An integrative multiscale model for the E lineage specification. Above the thick arrow: a scheme for the multi-scale network. The string in the green box corresponds to the C. elegans cell name while the number in the parenthesis the existing time period for that cell in minutes. The network below the cell name (green box) corresponds to the causal network maintained during the lifetime of that cell (denoted as maintenance network). The network on the left of the arrow corresponds to the causal network relevant to the cell fate commitment from the progenitor cell dividing into the daughter cells (denoted as commitment network). On the right, we zoom in to see the network architecture in details. For constructing the maintenance network, we first identify gene pairs with mutual information larger than 1 based on raw protein expression levels in each cell. Then we calculate the causality score for those pairs. For constructing the commitment network, we first identify genes with expression significantly different between two daughter cells, and use all those genes to calculate the pairwise causality score as well as filtering gene pairs with mutual information larger than 1. We then applied Context Likelihood of Relatedness (CLR) algorithm to remove spurious causal interactions. The same arc plot visualization from Fig 5 is applied here. To avoid overplotting the network, only up to top 50 edges are visualized.  (F) Lineage-specific (AB, P, MS, E, D, C) causal networks for the curated master regulators constructed with Scribe. All transcription factors are arranged in the same order along each axis. Regulatory interactions (i.e., from regulator to regulated) are shown by edges in clockwise orientation. The width of the edge corresponds to the causality score from the regulator to the target estimated from Scribe. Similarly, only up to top 50 edges with strongest causality score are visualized. Each axis includes the same set of genes which is equally ordered as shown below the hive-plot.
+ </p>
+
+ <h2 data-toc-text = "Relationship between Scribe and Monocle 2 as well as...">Relationship between Scribe and Monocle 2 as well as other relevant packages </h2>
+
+ <p><code>Scribe</code> relies on <code>Monocle 2</code> for reconstructing the single-cell trajectory before inferring causal network. We extended <code>Monocle 2</code> in a few aspects to account for the specific requirement for <code>Scribe</code>. For example, in order to avoid the over-crowded nature of the cells at the terminal regions of the trajectory, we applied a simple strategy to first run Monocle 2 using DDRTree to get the trajectory with complex branches and then reorder the trajectory for each branch (from the source state to the terminal state) using principal curve (simplePPT) with the low dimension space obtained from the diffusion map dimension reduction technique. <code>Scribe</code> provides various methods for infering the regulatory relationship, mutual information, Granger causality and CCM. We used the implementation from parmigene, vars and rEDM respectively. To intuitively visualize the casual regulation between pairs of genes, we generalized the DREVI approach. The network visualization relies on the igraph, netbiov, arcdiagram as well as the HiveR packages. </p>
+
+ <p>We are preparing a manuscript describing <code>Scribe</code> for reconstructing causal regulatory network.</p>
+
+
+
+ <h2>Theory behind Scribe</h2>
+
+
+  <h3>Restricted direct information</h3>
+
+  <p> A very well-known measure of interdependance of two random variables \(X\) and \(Y\) was first proposed by [cite]
+    called mutual information is defined as: </p>
+
+    \[I(X;Y) = \sum_{x,y} p_{XY}(x, y)log \frac{p_{XY|Z}(x, y|z)}{p_{X|Z}(x|z)p_{Y|Z}(y|z)}\]
+
+  <p> The mutual information between \(X\) and \(Y\) is equal to zero if and only if \(X\) and (\Y\) are independent.
+    The mutual information of two variables given a third random variable \(Z\) is defined as: </p>
+
+    \[I(X;Y|Z) = \sum_{x,y,z} p_{XYZ}(x, y,z)log \frac{p_{XY}(x, y)}{p_{X}(x)p_{Y}(y)}\]
+
+  <p> Similarly, the mutual information between \(X\) and \(Y\) given \(Z\) is equal to zero if and only if \(X\) and \(Y\) are independent given \(Z\).
+      In general, \(X\), \(Y\), and \(Z\) can be multi-dimensional random variables with arbitrary dimensions, such as in the case that the variables are time-series
+    \(\underline{X}^t\), \(\underline{Y}^t\), and \(\underline{Z}^t\) So the mutual information between the time-series can be defined similarly as \(  I(\underline{X}^t, \underline{Y}^t, \underline{Z}^t)  \).
+     Now the question we might ask ourselves is is it possible to define a measure for the amount of information the past state(s) of \(X\) provide about the current state of the variable \(Z\) denoted body
+   \(Z(t - 1)\)? [cite: DI paper] provides such a measure called Directed Information, sometimes referred to as ”Transfer Entropy” [cite: T. Schreiber, Measuring information transfer,” Physical review letters, vol. 85, no. 2, p. 461, 2000].
+   The directed information from the time-series \(\underline{X}^t\) to \(\underline{Y}^t\) is defined as: </p>
+
+   \[DI(X \rightarrow Y) = \sum_{t=1}^T I(\underline{X}^{t-1};Y(t)|\underline{Y}^{t-1})\]
+
+   <p> The conditioned version of it also can be defined similarly: </p>
+
+   \[DI(X \rightarrow Y|Z) = \sum_{t=1}^T I(\underline{X}^{t-1};Y(t)|\underline{Y}^{t-1}, \underline{Z}^{t-1})\]
+
+   <p> (Mention the theorem for DI) [Cite DI paper]
+In [Cite DI paper] it is shown that if the system is not purely deterministic, then the directed information graph (DIG) and the causality graph (CG) are identical. However, they have shown that if the relationship in the dynamic system is purely deterministic, then the algorithm is unable to return the correct causality graph. It is contrary to CCM method which only deals with the deterministic systems and is unable to perceive the graph in a stochastic (noisy) system. Thus in the case of the first-order Markov systems we introduce an alternate version of DI which employs only the immediate past of the system instead of the whole past samples: </p>
+
+\[DI(X \rightarrow Y) = I(X(t-1);Y(t)|Y(t-1))\]
+
+and the conditioned version of it can be expressed as:
+
+\[DI(X \rightarrow Y|Z) = I(X(t-1);Y(t)|Y(t-1), Z(t-1))\]
+
+<p>In [Cite: Our Allerton paper] it’s shown that this method works in many stochastic or deterministic cases and under
+some mild assumptions it’s capable of inferring the correct graph.</p>
+
+<h3>Estimator</h3>
+<p>
+  The RDI is an extension of mutual information which takes into account the direction of information flow, under the assumption that the underlying processes can be described by a first order Markov model. Mutual information is estimated using the Kraskov method (KSG method) \cite{}, which builds on counting nearest-neighbor points. In the R implementation of Scribe, nearest-neighbor points are identified with a modified RANN package while in the python implementation, they relies on the sklearn module.
+</p>
+
+<h3>Uniformization method for adjusting sampling bias</h3>
+<p> As we may see from above, RDI requires calculating the conditional mutual information, for example, \(I(X(t-d);Y(t)|Y(t-1))\), which is a function of the joint distribution \(p(x_{t-d}, y_t, y_{t-1}) = p(y_t|x_{t-d}, y_{t-1})p(y_t, y_{t-1})\). In reality, we are often much more interested in the potential causality from the regulator \(X\) and the target \(Y\) given target’s own history \(y(t-1)\) without cognizance of the actual distribution
+  \(p(x_{t-d}, y_{t-1})\); that is, the causality should be fully defined by the conditional distribution \(p(y_{t}|x_{t-d},y_{t-1})\). Since sc-RNA genomics methods often heavily sample cells from steady states while rarely captures cells at transition states, this dependence can dramatically decrease the performance of RDI, especially considering that the transition states imply critical regulation events.
+</p>
+
+<p>
+  We are thus motivated to develop a new method, uniformized conditional mutual information
+(uCMI) , to replace the actual distribution \(p(x_{t-d}, y_{t-1})\) with a uniform distribution \(u(x_{t-d}, y_{t-1})\)
+to remove the aforementioned bias from the data and calculate the conditional mutual
+information for the new distribution \(p(y_{t}|x_{t-d}, y_{t-1})u(x_{t-d}, y_{t-1})\) instead of the actual
+distribution \(p(x_{t-d}, y_{t}, y_{t-1})\). We proposed a new estimator for measuring this quantity and generalized the uCMI to qUMI which enables replacing the actual distribution with any distribution of interest. By replacing the conditional CMI in RDI with uCMI, we obtain a new method, uniformized RDI (uRDI), for measuring the potential causality.
+</p>
+
+<h3>Scribe: a toolkit for visualization and detection of complex causal regulation from single cell genomics datasets</h3>
+
+<p>
+  Although Scribe is applicable to any time-series datasets, it is specifically designed for visualizing and detecting complex gene regulation from single cell genomics (scRNA-seq, for example) datasets. Scribe relies on (uniformized) restricted direct information to detect causality but also supports other methods, including the well-known mutual information, Granger causality or the more recent CCM. Scribe starts with time-series data, which can be either “pseudo-time-series” based on developmental trajectory reconstructed from scRNA-seq datasets (for example, using Monocle 2), live imaging datasets or datasets with current and predicted spliced RNA expression estimated with RNA-velocity. Scribe provides three main types of analysis:
+</p>
+
+<ol>
+  <li>Visualizing and estimating causal gene regulation.</li>
+  <li>Inferring temporal causality of gene regulation.</li>
+  <li>Reconstructing large-scale sparse causal regulatory network</li>
+</ol>
+
+<h3>Preparing pseudo-time-series for scRNA-seq datasets</h3>
+
+<p>
+  Scribe does not provide any built-in functionalities for pseudo-time-series construction and relies on Monocle 2 or other tools, for example, dpt or wishbone (\cite{}), for reconstructing the single-cell trajectory before inferring causal network. In relation to physical time, pseudotime has arbitrary scale, thus Scribe doesn't consider pseudotime value instead the ordering of each cell in pseudotime for causal network inference.
+</p>
+
+<h3>Visualizing pairwise gene interaction</h3>
+<p>
+In order to intuitively visualize casual regulations between genes, Scribe provides different strategies to visualize the  response ,  causality  and  combinatorial regulatory logics . We noticed that the response visualization is similar to the DREVI approach as proposed by Smita Krishnaswamy, et. al (\cite{}). However, response visualization has a key difference to DREVI in that it considers time delay to visualize the expected expression of potential targets given a potential regulator’s expression after a time delay. Response visualization thus additionally aids in visualizing commonly appeared time-delayed regulations involved in cell differentiation \cite{}.
+</p>
+
+<p>
+  In order to intuitively visualize casual regulations between genes, Scribe provides different strategies to visualize the  <b>response</b> ,  <b>causality</b>  and  <b>combinatorial regulatory logics</b> . We noticed that the response visualization is similar to the DREVI approach as proposed by Smita Krishnaswamy, et. al (\cite{}). However, response visualization has a key difference to DREVI in that it considers time delay to visualize the expected expression of potential targets given a potential regulator’s expression after a time delay. Response visualization thus additionally aids in visualizing commonly appeared time-delayed regulations involved in cell differentiation \cite{}.
+</p>
+
+<p>
+  One limitation of response visualization is that it ignores the effects of a gene's previous state to the current state or memory of its history. In order to also capture this effect and thus intuitively visualize causality, Scribe is thus equipped with the causality visualization. Essentially, this visualization visualizes the causal regulation via considering information transfer from the time delayed potential regulator to the target’s current expression, conditioned on the target’s previous state to remove effects from auto-regulation. A causality visualization is a heatmap consisting of the expected value of the target's current expression given the target’s previous expression (y-axis) and regulator’s expression with a time lag   (x-axis). For each column, it represents the relationship for the target's expression at the previous time point to the current state (memory of the history or “auto-regulation”) given a fixed regulator value, while for each row, the information transfer relationship from the regulator to its targets given the previous target state.
+</p>
+
+<h3>Visualizing combinatorial gene regulation</h3>
+<p>
+  It is of great interest to understand the combinatorial gene regulation as it often determines how cells make decision to choose a particular cell fate or adapt to various external signals \cite{}. In order to visualize the two-input combinatorial regulation, Scribe provides another visualization tool for visualizing combinatorial regulation. The combinatorial regulation visualization is a heatmap consisting of the expected value of the target's current expression given knowing both of the regulators' expressions with a time lag (x/y-axis). For both of the causality or combinatorial logic visualization, the corresponding expected value is calculated through a local average with a Gaussian kernel.
+</p>
+
+<p>
+  We noticed that the gene regulation affects the rate of the target gene instead of the gene expression. For example, if a gene is negatively regulated by gene. We may define the rate
+  function of \(x\) as \( \frac{dx_{t}}{dt} = 1/(x_{t-1}^{2} + y_{t-\mu}^{2}) \). Therefore, directly visualizing expected rate of target at current state given knowing both of the regulators' expression with the a time lag (x/y-axis) will give us better intuition of regulations (see  supplementary figure XX ). Although we won’t have accurate estimates of the rate with pseudo-time-series data, the RNA-velocity method can be used to obtain those estimates.
+</p>
+
+<h3>Assessing temporal causal gene regulation</h3>
+
+<p>
+  Gene regulation is dynamic and the timing of maximal regulation (regulation peak) between gene pairs varies dramatically (\cite{}). Scribe provides a convenient interface to estimate the temporal causal regulation based on a moving window across the time series, that is, we calculate the causality within every, for example, 50 time points in the time-series data. This method helps to identify the period of strongest gene regulation which may have important clinical application as it suggests a window for genetic inference.
+</p>
+
+<h3>Estimating time delay of causal regulation between gene pairs</h3>
+
+<p>
+  An important parameter required for causal network inference in Scribe is the proper time-delay between two gene expression time series. Scribe provides two empirical approaches to estimate this parameter. For a linear trajectory, Scribe identifies the inflection points for the gene pair and the difference between them is used as the time delay; for a branch trajectory, Scribe identifies the branch time point for the gene pair and the difference between them is used as the time delay. As those strategies don’t always give robust results, in practice, however, we directly scan a window of time delays (by default, 5, 20, 41 unless otherwise is noted) and use the maximal causality score among all the time delays.
+</p>
+
+<h3>Inferring and visualizing gene regulatory network</h3>
+
+<p>
+  Scribe can either estimate a causal network from a set of known TFs (and among the TFs) to a set of target of interest (select through, for example the BEAM test) , or just estimate the pairwise causality among all the genes in a set of genes of interests. For the first scenario, Scribe will estimate causality between all pairs of TFs, and the causality from each TF to each target; for the second scenario, Scribe will simply estimate causality for any pair of genes in both directions. In order to retrieve significant causal edges while removing promiscuous edges and reconstruct a sparse causal regulatory network satisfying known properties of biology networks, Scribe relies on a modified CLR method (Context Likelihood Relatedness) and the novel directed network regularization inspired by some biological assumptions (see section <b>Network sparsifier</b> below).
+</p>
+
+<p>
+  In order to facilitate the visualization of complex networks, Scribe provides a variety of approaches to visualize the RDI network either through a heatmap, a hierarchical layout, an arc diagram or a hive plot, implemented based on igraph, netbiov, ggraph, arcdiagram as well as the HiveR R packages.
+</p>
+
+<p>
+  We note that in addition to the core causality detection facility based on (uniformalized) restricted direction information, Scribe also supports various methods for inferring the regulatory relationships including mutual information, Granger causality and CCM implemented based on parmigene ,  vars  and the  rEDM  packages, respectively. We also provide a python package for most of the estimation methods, although without extensive support for visualization.
+</p>
+
+<h3>Parameters of cRDI</h3>
+
+<table>
+  <tr>
+    <th>Parameter</th>
+    <th>Type</th>
+    <th>Effect</th>
+  </tr>
+  <tr>
+    <th>delays</th>
+    <th>Vector of positive integers</th>
+    <th>The vector of potential delays for all of which all the lagged pairwise mutual information terms are calculated. Then for each pair, the maximum value and the corresponding delay are kept, regarded as the “true values”. The “true” delays are then used for conditioning (if L>0 - see below).
+Setting too small a set of values can cause mis-detection of the causal relationships, while a larger set of delays can result in false discovery of indirect causal relationships, resulting in false delays and incorrect conditioning.</th>
+  </tr>
+  <tr>
+    <th>L</th>
+    <th>Non-negative Integer</th>
+    <th>Default: 0
+Number of the top incoming nodes to the destination, except the source, over which RDI is conditioned. 0 corresponds to no conditioning (Plain pair-wise RDI). For each node, whether the source or the conditioning nodes, the delays are set as the corresponding true values (See above).
+Conditioning over more nodes is closer to theory conditions from inferring causal relationships, however it imposes more computational complexity as well as increasing the dimension of the data (which undesirably reduces the accuracy of the RDI estimator with given number of samples N.</th>
+  </tr>
+  <tr>
+    <th>k</th>
+    <th>Positive Integer</th>
+    <th>Default: 5
+Number of the nearest neighbors in KNN estimator for the conditional mutual information. The parameter should be set in such a way so the neighborhood captures adequate number of samples for a good estimate of the probability corresponding to each sample.</th>
+  </tr>
+  <tr>
+    <th>Uniformization</th>
+    <th>Boolean</th>
+    <th>Default: False
+If True, uRDI is used instead of RDI. While imposing higher computational complexity over the data, it’s expected to improve the causal inference in the highly-biased sampling distribution cases.</th>
+  </tr>
+</table>
+
+<h3>Algorithm Complexity</h3>
+<p>RDI, uRDI, gene-pair causality analysis, number of cells, cRDI etc.</p>
+
+<table>
+  <tr>
+    <th>Algorithm</th>
+    <th>Methodology</th>
+    <th>Parameters</th>
+    <th>Complexity N: # of samples</th>
+  </tr>
+  <tr>
+    <th>CCM</th>
+    <th>Determining the causality from X to Y based on how well one can reconstruct the cross-mapped estimate of X from the nearest neighbors determined on Y space</th>
+    <th>E:  The number of lags embedded in the shadow manifold
+Tau:  The time lag between each consecutive pair of time samples (default: 1)</th>
+    <th>O(2Nd+2kN)+O(N)</th>
+  </tr>
+  <tr>
+    <th>Granger Causality</th>
+    <th>Determining the causality from X to Y based on how much the past samples of X contribute in linearly estimating the current state of Y, compared to when the Y is estimated based merely upon its own past</th>
+    <th><b>Maxlag:</b> The number of lags of past sample included in estimating the current state of Y</th>
+    <th>O(l^2 N + l^3 + l^2 N + l N)</th>
+  </tr>
+  <tr>
+    <th>RDI</th>
+    <th>Determining the causality from X to Y based on the amount of mutual information between the past of X and the current state of Y conditoned over the past of (potentially) all other variables than X</th>
+    <th><b>K:</b> The number of neighbors for KNN estimation of mutual info. <b>Delays:</b> The lags for which the mutual info from tha lag to the current state is estimated. <b>L:</b> The number of the conditioning nodes other than X and Y.</th>
+    <th>O(Nd+kN) + (complexity of query) + O(N)</th>
+  </tr>
+  <tr>
+    <th>uRDI</th>
+    <th>Same as RDI method, with the replacement of the empirical distribution of the past samples, with a uniform distribution</th>
+    <th>All Parameters from RDI plus: . <b>BW:</b> The bandwidth of the kernel estimator</th>
+    <th>O(Nd+kN) + (complexity of query) + (complexity of kde) + O(N)</th>
+  </tr>
+</table>
+
+<h3>Limitation of pseudotime based causality inference</h3>
+
+<p>
+  Although pseudotime provides us a general trend of the gene expression dynamics, it has some inherent limitations which restrict its performance and accuracy. Firstly, the information fluctuation doesn’t necessarily transfer from one cell to another nearby cell in pseudotime trajectory as they are different cells. Secondly, the pseudotime is often arbitrary as it is purely based on distance between cells in the gene expression space. Scribe can avoid these limitations by taking advantage of the old idea of exploiting detection afforded by microarray of unspliced mRNAs as surrogate for ongoing or recent transcription, and hence to derive an approximation of the first time-derivative of transcript abundance - this old idea has been re-used in the recent analysis framework “RNA velocity”1    to measure the information transfer based on current expression state and predicted future expression from the same cell. As reported the time delay between the current transcript abundance and predicted transcript abundance is close to a particular physical time (for example, 2 hours in \cite{}). Meanwhile, real time confocal imaging data for about 200 transcription factors’ expression dynamics over the entire  C. elegans  embryogenesis1  ,2  also provides us a great resource of real time series data for each gene in each  C. elegans  cell.
+</p>
+
+<h3>Network sparsifier: CLR and directed graph regularization</h3>
+
+<p>
+  In theory, Scribe can remove potential indirect causal gene regulation from one gene   to another gene   by conditioning on all other genes in the transcriptome excepting   . However, this is impractical as it requires infinite samples and causes enormous computational burden. Therefore, we seek for alternative approaches based on statistical significance and reasonable assumptions of biology structures to remove potential indirect edges. The first method we applied is the CLR or Context Likelihood Relatedness. After computing the causality score with RDI/uRDI between all gene-pairs, CLR calculates a normalized score based on the z-score (or 0 if the z-score is less than 0) from all the input edges to the potential target or all the output edges from the potential regulator of the gene pair. This normalized score is used as a statistical likelihood of each causal edge regarding to its network context. More formally, denoting the
+asymmetric matrix   corresponds to all raw causality scores calculated with Scribe, with \(R_{ij}\) being the causality score from gene \(i\) to gene \(j\), we can calculate the z-score \(z_{i}\) based on all gene \(i\)'s output causality scores and \(z\_{j}\) all gene \(j\)'s input causality scores. The normalized score of \(R_{ij}\), \(\hat{R_{ij}}\) is defined as:
+</p>
+
+\[\hat{R_{ij}} = \sqrt{ \frac{max(0, z_{i})^{2} + (max(0, z_{j}))^{2}}{2} }\].
+
+<p>
+  The user can either use the normalized score or choose a threshold of the normalized scores and treat the edges above the threshold as significant or real regulation comparing to the background distribution of the causality scores. As discussed in the original study, CLR removes many of the false regulations in the network by eliminating “promiscuous” cases, where one regulator weakly co-varies with a large numbers of genes, or one gene weakly co-varies with many transcription factors which may arise when the assayed conditions are inadequately or unevenly sampled. We note that, however, the original CLR is only applied on a symmetric mutual information based matrix while we are dealing with an asymmetric matrix of causality scores. After applying CLR, the network may be still dense and contain spurious edges. Previous studies have shown that the biological networks have some special properties distinct from those of random networks; for example, the network’s out-degree distribution is well approximated by a power law distribution where its in-degree distribution is almost an exponential distribution. Based on those assumptions, we proposed a new regularization method for a directed graph.
+</p>
+
+<p>
+  The goal of our method is to learn a sparse directed graph from a dense asymmetric causality network (retrieved after applying CLR) satisfying two aforementioned properties. The directed
+graph’s structure is represented by an indicator matrix denoted by \( \Theta \in {0, 1}^{N \times N} \), where \( \Theta_{i, j} = 1 \) stands for the existance of edge \(i\) to \(j\), and \(0\) otherwise. Since the entries
+are indicators, the in-degree and out-degree of each node in the network can be easily formulated. Specifically, the out-degree of the \(i\)th gene is correspondingly  represented by \(h_{out}(i) = ||\theta_{i}||_{1}\) and the
+in-degree of the \(i\)th column of \(\Theta\), and \(l_{1}\) counts the number of nonzero elements since \( \theta_{i, j} \in {0, 1} \). Given the asymmetric matrix of causality score \(R\) with the \( (i, j) \)th entry as \(R_{ij}\),
+the following optimization problem is formulated to learn the structure of the network:
+</p>
+
+\[ min_{\Theta \in \alpha} - \sum_{i,j} \theta_{i,j}R_{i, j} + \alpha \sum_{i=1}^N log(||\theta_{i}||_{1} + \xi) + \lambda\sum_{i=1}^{N} ||\theta^{i}||_{1} \]
+
+where the feasible set of the network structure is
+
+\[ \alpha = {\Phi \in  {0, 1}^{N \times N} : \sum_{i} \sum_{j} \theta_{i, j} \ge B} \]
+
+The budget parameter \(B\) is introduced to prevent trivial solution, and a small positive value \(\xi\) is
+used to prevent the numerical issue of log function. Parameter \(\alpha\) is the exponent of the power law distribution and
+\(\lambda\) is the parameter of the exponent distribution.
+
+<h3>All other analysis details </h3>
+
+<ol>
+  <li> Simulation (model set-up, parameters)</li>
+  <li> Logic gates, three-gene network motif and two-gene network motifs</li>
+  <li> 2 blood databases </li>
+  <li> Benchmark details, etc.</li>
+  <li>Chromaffin data</li>
+  <li><i>C. elegans</i> data</li>
+  <li>Identify network motif from the data and identify enriched network modules</li>
+</ol>
+
+<h3> Regularizing direct graph with biology inspired assumptions </h3>
+
+<p> Our goal is to sparsify a weighted directed network based on certain criterion from computational biology. First, a weighted directed network is defined as
+  \( \mathcal{G = <V, E, W>, where V = {\( V_{1}, . . ., V_{N} \)} is a set of vertices, \mathcal{E} is a set if directed edges \(e_{i,j}\) = \( \lt V_{i}, V_{j} \gt \) for
+  the edge from \(V_{i}\) to \(V_{j}\), and \( W \in R_{+}^{N \times N} \) is a non-negative matrix of weights for every directed edge. In the gene regulation network, each node represents a gene, and the relationships among genes are represented by weighted edges. Second, the criterion of sparsifying
+  \( \mathcal{G} \) are from the knowledge of gene regulatory networks.
+</p>
+
+<ol>
+  <li> The out-degree distribution is well approximated by a power law distribution.</li>
+  <li> The in-degree distribution is almost an exponential distribution</li>
+  <li> The large weight prefers to be maintained</li>
+</ol>
+
+<p> Let \( \Theta \in {0, 1}^{N \times N}\) be a binary matrix. The new weight matrix is to be recovered as \( \Theta \odot W\). The out-degree of the
+\(i\)th gene can be represented by \(h_{out}(i) = ||\theta_{i}||_{1}\) and the in-degree of the \(i\)th  gene is correspondingly represented by
+\(h_{in}(i) = ||\theta^{i}||_{1}\), where \( \theta_{i} \) and \( \theta^{i} \) are the \(i\)th row and the \(i\)th column of the \(\Theta\) in the
+\( l_{1} \) norm, and \(l_{1}\) counts the number of nonzeros since \(\theta_{i,j} \in {0,1} \). </p>
+
+<p> According to the power law distribution \(p(d) = ad^{-a}\) with exponent \(\alpha\) and normalization term \(a\). The first assumption defined over \(\Theta\)
+  is used to fit the degrees of all genes in a network by taking the likelihood of all degrees as
+</p>
+
+\[ p(\Theta | \alpha) \propto \prod^{N}_{i=1} h_{out}(i)^{-\alpha} \]
+
+<p>According to the exponential distribution \(p(d) = \lambda\)exp(\(- \lambda d\)), the second assumption is modeled as</p>
+
+\[ p(\Theta | \lambda = \prod_{i=1}^{N} \lambda exp(- \lambda h_{in}(i)) \]
+
+<p>Hence, the joint prior distribution over \( \Theta \) can be written as</p>
+
+\[ p(\Theta | \alpha , \lambda ) \propto \prod_{i=1}^{N} \lambda exp(- \lambda h_{in}(i))h_{out}(i)^{-a} \]
+
+<p>The third assumption is that the \( \Theta_{i, j} \) corresponding to small \( w_{i,j} \) are set to zeros, and large values are nonzeros by keeping their relative ordering. The total recovered weights can be represented by</p>
+
+\[ f(\Theta) = \sum_{i,j} \theta_{i,j} w_{i,j} \]
+
+<p>Our goal is to maximize this function to maintain the largest weights.</p>
+
+<p>A constraint with a given budget parameter denoting the number of total directed edges selected by the model given by</p>
+
+\[ \sum_{i} \sum_{j} \theta_{i,j} \ge B \]
+
+<p>in which \(B\) is a budget parameter to control the least number of nonzeros in \( \Theta \).
+Hence, the feasible set of \( \Theta \) can be represented by</p>
+
+\[ \mathcal{A} = { \Theta \in {0, 1}^{N \times N} : \sum_{i} \sum_{j} \theta_{i, j} \ge B} \]
+
+<p>By treating \( -log(p(\Theta | \alpha , \lambda)) \) as the regularization term, we formulate the following
+optimization problem</p>
+
+\[ min_{\Theta \in \mathcal{A}} - f(\Theta) + \alpha \sum^{N}_{i=1} log(||\theta_{i}||_{1} + \xi) + \lambda \sum_{i=1}^{N} ||\theta^{i}||_{1} \]
+
+<p>where a small positive value \( \xi \) is used to prevent log(0).</p>
+
+
+</aside>
+
+ <h2>Citation </h2>
+
+ <p> If you use <i>Scribe</i> to analyze your experiments, please cite:
+
+ {% highlight R %}
+citation("Scribe")
+
+To cite package ‘Scribe’ in publications use:
+
+ANN Library: David Mount, Sunil Arya.
+flann Packge: http://www.cs.ubc.ca/research/flann/.
+InformationEstimator: Xiaojie Qiu, Arman Rahimzamani,
+  Sreeram Kannan and Cole Trapnell (2017).
+Scribe: Restricted direction information for network inference.
+R package version 0.1. https://CRAN.R-project.org/package=Scribe
+
+A BibTeX entry for LaTeX users is
+
+@Manual{,
+  title = {Scribe: Restricted direction information for network inference},
+  author = {ANN Library: David Mount and Sunil Arya.
+            flann Packge: http://www.cs.ubc.ca/research/flann/.
+            InformationEstimator: Xiaojie Qiu and Arman Rahimzamani and
+                Sreeram Kannan and Cole Trapnell},
+  year = {2017},
+  note = {R package version 0.1},
+  url = {https://CRAN.R-project.org/package=Scribe},
+}
+
+ {% endhighlight %}
+
+ <h2>Discussion</h2>
+ <p>scRNA-seq affords the unprecedented high-resolution view of cellular dynamics which sparks an explosion of computational development of network inference. Methods based on boolean network, mutual information or dynamic systems and sometimes pseudotime ordering have been reported \cite{}; however, most of those methods only reports statistical dependence, have poor performance or are difficult to scale up to large datasets. More importantly, all pseudotime based methods avoid discussion of the fact that gene expression fluctuation doesn’t propagate along the pseudotime trajectory although it is used as the foundation for network inference.
+ </p>
+
+ <p> Scribe builds upon a few new advances in information theory to specifically dissect complex casual regulations from single-cell measurements. Firstly, Scribe employs Restricted Direct Information (RDI) and overcomes limitations inherent to Granger Causality (GC) and Convergent Cross-Mapping (CCM). Through extensive evaluation, we demonstrate that Scribe performs favorably comparing to GC or CCM across all synthetic or real scRNA-seq data benchmarks, confirming its theoretical superiority in retrieving the true network. Furthermore, in order to alleviate sampling bias of gene expression results from oversampling at steady states, Scribe relies on a rigorous technique, uniformization of RDI (uRDI) to quantify potential influence, greatly aiding in unfolding of novel causal regulations happen at rare transition states. Scribe also provides a framework to intuitively visualize transcriptional response, causal information transfer, and combinatorial regulation. Our method thus offers a principled and generalized alternative for the previously reported DREVI / DREMI method. Finally, Scribe explicitly considers the limitation of pseudotime based network inference and leverages RNA-velocity to directly infer causal regulations through estimating information transfer from the regulator to target in the same cell.
+ </p>
+
+ <p> We apply Scribe to a variety of scRNA-seq datasets and find it can accurately resolve gene regulatory hierarchies of lung epithelium cell bifurcation, dendritic cell response to LPS stimulation as well as myelopoiesis. Scribe also correctly infers the core regulatory network of myelopoiesis. By taking advantage of RNA-velocity, we apply Scribe to identify two potential feed-forward loops associated with the commitment of chromaffin cells, suggesting an underlying regulatory mechanism of the cell fate specification. Finally, Scribe provides an avenue to reconstruct high-resolution causal network for every cell division during C elegans early embryogenesis with lineage-resolved live-imaging data.
+ </p>
+
+ <p> The observational datasets analyzed in this study restrict Scribe to only detect causality based on time delay. The recent emerged technologies of CRISPR based genetic screening with scRNA-seq readout provide a natural mean to directly dissect causal effect after perturbing a regulator. It is of great interest to extend Scribe to infer causality from those experiments. The increase in scale for scRNA-seq experiments has already launched several initiatives for building a comprehensive cell atlas of all tissues, organs as well as model organisms, including C. elegans, mouse and human \cite{}. With the enormous amount of data generated from those projects and the emergence of novel single cell measurements, for example multi-omics datasets, lineage tracing, live imaging of multiple genes among others, we anticipate that Scribe will provide the foundation to achieve the ultimate goal of reverse engineering the causal network at the scale and accuracy of developmental network for sea-urchin embryogenesis for each of the many cell types in the human body. </p>
+
+ <p><b>Code availability.</b> A version of Scribe (version: 0.99) used in this study is provided as Supplementary Software. The newest Scribe implemented as a R package is available through GitHub
+   <a href="https://github.com/cole-trapnell-lab/di-grn">https://github.com/cole-trapnell-lab/di-grn</a>. A python version of Scribe (without comprehensive supports of visualization) is available at:
+   <a href="https://github.com/cole-trapnell-lab/di-grn">https://github.com/cole-trapnell-lab/di-grn</a>. Supplementary Software also includes a helper package including helper functions as well as all analysis code that can be used to reproduce all figures and data in this study. </p>
+
+ <p><b>Data availability.</b> Four public scRNA-seq data sets are used in this study. Lung dataset: GSE52583 <a href="https://paperpile.com/c/ucTO2R/AmF9">Treutlein et al. 2014</a>; LPS dataset: <a href="https://www.ncbi.nlm.nih.gov/geo/query/acc.cgi?acc=GSE41265">GSE41265</a>;
+   MARS-seq dataset <a href = "https://paperpile.com/c/ucTO2R/2nUK">(Paul et al. 2015)</a>: http://compgenomics.weizmann.ac.il/tanay/?page id=649. Olsson dataset <a href = "https://paperpile.com/c/ucTO2R/2nUK">(Olsson et al. 2016)</a>: synapse id <a href = "https://www.synapse.org/#!Synapse:syn4975057">syn4975060.</a>
+   Live imaging dataset for the C. elegans is obtained from Waterston lab.
+ </p>
+
+ <h2>Acknowledgements </h2>
+
+ <p> Scribe was written by Xiaojie Qiu which is based on the python package originally developed by Arman Rahimzamani, with substantial design input Cole Trapnell and Sreeram Kannan. The core of Scribe on estimating restricted direction information (RDI) is written in Rcpp for speed accerlationp. We are grateful to all members from Trapnell and Kannan lab, especially XXX for technical assistance, and Andysheh Mohajeri, Jonanthan Packer, XXX etc. for helpful discussions. This work was supported by  US National Institutes of Health (NIH) grants DP2 HD088158 (C.T.) and U54 DK107979 (C.T.), XXXXXX; C.T. is partly supported by a Dale. F. Frey Award for Breakthrough Scientists and an Alfred P. Sloan Foundation Research Fellowship.</p>
+
+ <p>This vignette was created from Wolfgang Huber's Bioconductor vignette style document, and patterned after the vignette for \Rpackage{DESeq}, by Simon Anders and Wolfgang Huber. </p>
+
+<h2>Session Info </h2>
+
+{% highlight R %}
+sessionInfo()
+
+## R version 3.4.3 (2017-11-30)
+## Platform: x86_64-apple-darwin15.6.0 (64-bit)
+## Running under: macOS High Sierra 10.13.1
+##
+## Matrix products: default
+## BLAS: /System/Library/Frameworks/Accelerate.framework/Versions/
+##          A/Frameworks/vecLib.framework/Versions/A/libBLAS.dylib
+## LAPACK: /Library/Frameworks/R.framework/Versions/3.4/Resources/
+            lib/libRlapack.dylib
+##
+## locale:
+## [1] en_US.UTF-8/en_US.UTF-8/en_US.UTF-8/C/en_US.UTF-8/en_US.UTF-8
+##
+## attached base packages:
+## [1] splines stats4 parallel stats graphics grDevices utils
+## [8] datasets methods base
+##
+## other attached packages:
+##  [1] plyr_1.8.4              Scribe_0.1            arcdiagram_0.1.11
+##  [4] netbiov_1.12.0          igraph_1.1.2          shiny_1.0.5
+##  [7] plotly_4.7.1            inflection_1.3        vars_1.5-2
+## [10] lmtest_0.9-35           urca_1.3-0            strucchange_1.5-1
+## [13] sandwich_2.4-0          zoo_1.8-1             MASS_7.3-48
+## [16] rEDM_0.6.9              monocle_2.6.1         DDRTREE_0.1.5
+## [19] irlba_2.3.1             Matrix_1.2-12         xacHelper_0.0.1.0000
+## [22] HSMMSingleCell_0.112.0  VGAM_1.0-4            ggplot2_2.2.1
+## [25] reshape2_1.4.3          Biobase_2.38.0        BiocGenerics_0.24.0
+## [28] knitr_1.18
+##
+## loaded via a namespace (and not attached):
+##  [1] httr_1.3.1               viridis_0.4.1         tidyr_0.7.2
+##  [4] jsonlite_1.5             viridisLite_0.2.0     assertthat_0.2.0
+##  [7] highr_0.6                slam_0.1-42           ggrepel_0.7.0
+## [10] pillar_1.0.1             lattice_0.20-35       glue_1.2.0
+## [13] limma_3.34.5             densityClust_0.3      digest_0.6.13
+## [16] RColorBrewer_1.1-2       colorspace_1.3-2      httpuv_1.3.5
+## [19] fastICA_1.2-1            htmltools_0.3.6       pkgconfig_2.0.1
+## [22] pheatmap_1.0.8           qlcMatrix_0.9.5       xtable_1.8-2
+## [25] purrr_0.2.4              scales_0.5.0          RANN_2.5.1
+## [28] Rtsne_0.13               tibble_1.4.1          combinat_0.0-8
+## [31] lazyeval_0.2.1           mime_0.5              magrittr_1.5
+## [34] evaluate_0.10.1          nlme_3.1-131          FNN_1.1
+## [37] tools_3.4.3              data.table_1.10.4-3   matrixStats_0.52.2
+## [40] stringr_1.2.0            munsell_0.4.3         cluster_2.0.6
+## [43] bindrcpp_0.2             compiler_3.4.3        rlang_0.1.6
+## [46] grid_3.4.3               htmlwidgets_0.9       labeling_0.3
+## [49] gtable_0.2.0             codetools_0.2-15      R6_2.2.2
+## [52] gridExtra_2.3            dplyr_0.7.4           bindr_0.1
+## [55] stringi_1.1.6            Rcpp_0.12.14
+{% endhighlight %}
+
+
+<h2>References</h2>
+
+<p>
+  [1] Cole Trapnell, Adam Roberts, Loyal Goff, Geo Pertea, Daehwan Kim, David R Kelley, Harold Pimentel, Steven L Salzberg, John L Rinn, and Lior Pachter. Differential gene and transcript expression analysis of RNA-seq experiments with TopHat and Cufflinks. Nature Protocols, 7(3):562–578, March 2012.
+</p>
+
+</div>
+</div>
+</div>
+
+<br>
+<br>
+<br>
+<br>
+<br>
+<br>
+
+{% include footer.html %}
+
+</body>
+
+</html>
